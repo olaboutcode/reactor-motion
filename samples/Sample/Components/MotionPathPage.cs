@@ -87,8 +87,8 @@ sealed class MotionPathPage : Component
             return;
         _bezierPlayer?.Dispose();
         Reset(_bezier);
-        _bezierPlayer = Animate.Motion.Bind(
-            Animate.Motion.Define(m => m
+        _bezierPlayer = Motion.Bind(
+            Motion.Define(m => m
                 .Path(Bezier())
                 .WithDuration(900)
                 .WithEasing(Easing.SinInOut)),
@@ -101,8 +101,8 @@ sealed class MotionPathPage : Component
             return;
         _arcPlayer?.Dispose();
         Reset(_arc);
-        _arcPlayer = Animate.Motion.Bind(
-            Animate.Motion.Define(m => m
+        _arcPlayer = Motion.Bind(
+            Motion.Define(m => m
                 .Path(Arc())
                 .WithDuration(900)
                 .WithEasing(Easing.SinInOut)),
@@ -117,7 +117,7 @@ sealed class MotionPathPage : Component
         _arcPlayer.Forward();
     }
 
-    static void Reset(Microsoft.Maui.Controls.BoxView? orb)
+    static void Reset(MauiControls.BoxView? orb)
     {
         if (orb is null)
             return;

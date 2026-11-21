@@ -7,7 +7,7 @@ sealed class MotionScrubPageState
 
 sealed class MotionScrubPage : Component<MotionScrubPageState>
 {
-    Microsoft.Maui.Controls.BoxView? _box;
+    MauiControls.BoxView? _box;
     MotionPlayer? _player;
 
     protected override void OnWillUnmount()
@@ -70,8 +70,8 @@ sealed class MotionScrubPage : Component<MotionScrubPageState>
         _box.ScaleX = 0.8;
         _box.ScaleY = 0.8;
         _box.Rotation = 0;
-        _player = Animate.Motion.Bind(
-            Animate.Motion.Define(m => m
+        _player = Motion.Bind(
+            Motion.Define(m => m
                 .Opacity(0, 1)
                 .Scale(0.8, 1)
                 .Rotate(0, 180)

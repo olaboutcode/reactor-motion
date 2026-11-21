@@ -2,7 +2,7 @@
 
 In-page view motion for MauiReactor. This repo is motion only.
 
-The public package and namespace is `Reactor.Motion`. The MAUI class library project is `MauiMotion`. The facade stays `Animate.Motion`. `Play` stays `Play`.
+The public package and namespace is `Reactor.Motion`. The MAUI class library project is `MauiMotion`. Recipes are built with `Motion.Define`. `Play` stays `Play`. There is no `Animate` type.
 
 ## Scope
 

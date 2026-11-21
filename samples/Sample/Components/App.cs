@@ -17,5 +17,5 @@ sealed class App : Component
 /// </summary>
 static class SampleNavigation
 {
-    public static Microsoft.Maui.Controls.INavigation? Current { get; set; }
+    public static INavigation? Current { get; set; }
 }

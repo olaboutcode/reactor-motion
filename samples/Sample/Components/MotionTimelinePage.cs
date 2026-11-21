@@ -2,7 +2,7 @@ namespace Sample.Components;
 
 sealed class MotionTimelinePage : Component
 {
-    Microsoft.Maui.Controls.BoxView? _box;
+    MauiControls.BoxView? _box;
     MotionPlayer? _player;
 
     protected override void OnWillUnmount()
@@ -57,7 +57,7 @@ sealed class MotionTimelinePage : Component
         ApplyRest();
         var intro = Motion.None.FadeIn().SlideIn(SlideFrom.Left, 48).WithDuration(280).WithEasing(Easing.CubicOut);
         var pulse = Motion.None.Scale(1, 1.12).WithDuration(200).WithEasing(Easing.CubicOut);
-        _player = Animate.Motion.Bind(
+        _player = Motion.Bind(
             Motion.None.WithDuration(280)
                 .Add(intro, 0, "intro")
                 .Then(pulse, "pulse"),

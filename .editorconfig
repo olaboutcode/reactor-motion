@@ -48,13 +48,6 @@ generated_code = true
 [**/bin/**]
 generated_code = true
 
-# The public type is Animate inside Reactor.Motion. Renaming it would break callers.
-[src/MauiMotion/Animate.cs]
-dotnet_diagnostic.MA0049.severity = none
-
-[src/MauiMotion/Animate.*.cs]
-dotnet_diagnostic.MA0049.severity = none
-
 # The recipe type is Motion, and the namespace is Reactor.Motion.
 [src/MauiMotion/Motion.cs]
 dotnet_diagnostic.MA0049.severity = none

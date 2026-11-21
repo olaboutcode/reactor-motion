@@ -2,7 +2,7 @@ namespace Sample.Components;
 
 sealed class StaggerGridPage : Component
 {
-    readonly Microsoft.Maui.Controls.BoxView?[] _tiles = new Microsoft.Maui.Controls.BoxView?[12];
+    readonly MauiControls.BoxView?[] _tiles = new MauiControls.BoxView?[12];
     MotionPlayer? _player;
 
     public override VisualNode Render()
@@ -44,12 +44,12 @@ sealed class StaggerGridPage : Component
 
     void Play()
     {
-        var views = _tiles.OfType<Microsoft.Maui.Controls.BoxView>().ToArray();
+        var views = _tiles.OfType<MauiControls.BoxView>().ToArray();
         if (views.Length == 0)
             return;
 
         _player?.Dispose();
-        _player = Animate.Motion.Play(
+        _player = Motion.Play(
             m => m
                 .FadeIn()
                 .Scale(0.9, 1)

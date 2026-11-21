@@ -54,7 +54,7 @@ In-page view motion for [MauiReactor](https://github.com/adospace/reactorui-maui
 
 ## Overview
 
-`Animate.Motion` plays an in-page clip on one view or many. A `Motion` value is an immutable recipe with no targets. `MotionPlayer` binds that recipe to views and can run it forward, in reverse, paused, repeated, staggered, sprung, or scrubbed.
+`Motion` is an immutable recipe with no targets. `MotionPlayer` binds that recipe to views and can run it forward, in reverse, paused, repeated, staggered, sprung, or scrubbed.
 
 Fade, slide, and scale live on `Motion`. Give each property one writer. A `MotionPlayer` and MauiReactor `WithAnimation` on the same property of the same view fight each other.
 
@@ -77,7 +77,7 @@ The package id is `Reactor.Motion`. The library targets .NET 10 and .NET MAUI.
 
 ### Example
 
-Bind a recipe with `Animate.Motion` and play it from the player.
+Bind a recipe with `Motion` and play it from the player.
 
 ```csharp
 sealed class MotionAnimation : Component
@@ -89,7 +89,7 @@ sealed class MotionAnimation : Component
             VStack(
                 Label("This is awesome!")
                     .BindMotion(
-                        Animate.Motion.Define(
+                        Motion.Define(
                             m => m
                                 .RotateX(180)
                                 .WithDuration(500)
@@ -122,8 +122,8 @@ global using Reactor.Motion;
 
 | Type | Role |
 |---|---|
-| `Animate.Motion` | Facade. `Motion` is a nested class, not a namespace. |
-| `Motion`, `MotionPlayer` | In-page recipe and playback. |
+| `Motion` | Recipe, plus static `Define`, `Bind`, `Play`, `ForwardAsync`, and `ReverseAsync`. |
+| `MotionPlayer` | Playback. |
 | `MotionPlaybackEventArgs` | Player events. State is `IsDismissed()`, `IsForward()`, `IsReverse()`, `IsPaused()`, and `IsCompleted()`. |
 | `Spring`, `Stagger`, `StaggerFrom`, `SlideFrom`, `ColorSpace`, `KeyframeBuilder<T>`, `Matrix4` | Recipe values. |
 | `VisualNodeExtensions` | `.BindMotion()`. |
@@ -134,19 +134,19 @@ The snippets below assume that using, plus `MauiReactor`.
 A `Motion` is an immutable recipe. It stores tracks, timing, and playback options. It does not store views. Bind it when you play it.
 
 ```csharp
-static readonly Motion Pulse = Animate.Motion.Define(m => m
+static readonly Motion Pulse = Motion.Define(m => m
     .Scale(1, 1.08)
     .WithDuration(180));
 ```
 
-`Animate.Motion.Define` starts from `Motion.None` and returns whatever the function returns. `Motion.None` is 300 ms, `Easing.CubicOut`, one play, HSV color, no spring, no stagger, no perspective.
+`Motion.Define` starts from `Motion.None` and returns whatever the function returns. `Motion.None` is 300 ms, `Easing.CubicOut`, one play, HSV color, no spring, no stagger, no perspective.
 
 ### Recipes
 
 Tracks write bindable properties. A to-only call captures the live value as `from` on the first `Forward`. A from/to call writes both ends, and the first `Forward` applies `from` before the clock starts. A third overload takes keyframes. See [Keyframes](#keyframes).
 
 ```csharp
-Animate.Motion.Define(m => m
+Motion.Define(m => m
     .FadeIn()
     .Scale(0.9, 1)
     .WithDuration(280));
@@ -349,11 +349,11 @@ RGB blends each channel, including alpha, in a straight line. Red to lime passes
 
 ### Bind and play
 
-`Animate.Motion` is the facade. The recipe type is `Motion`. The player type is `MotionPlayer`.
+`Define`, `Bind`, `Play`, `ForwardAsync`, and `ReverseAsync` are static methods on `Motion`. The player type is `MotionPlayer`.
 
 ```csharp
-MotionPlayer player = Animate.Motion.Bind(
-    Animate.Motion.Define(m => m.FadeIn().WithDuration(280)),
+MotionPlayer player = Motion.Bind(
+    Motion.Define(m => m.FadeIn().WithDuration(280)),
     view);
 
 player.Forward();
@@ -381,19 +381,19 @@ var player = Motion.None.FadeIn().WithDuration(280).Bind(view);
 `Play` is bind, then `Forward()`, and you keep the player so you can pause or reverse it later.
 
 ```csharp
-_player = Animate.Motion.Play(m => m.Scale(1, 1.08).WithDuration(180), card);
+_player = Motion.Play(m => m.Scale(1, 1.08).WithDuration(180), card);
 ```
 
-`ForwardAsync` and `ReverseAsync` on the facade also bind and start, and the only handle you get back is the `Task`. Use `Bind` or `Play` when you need the player. A later `Bind` or `Play` on that view disposes the player the one-shot call left behind. See [One player per view](#one-player-per-view).
+`ForwardAsync` and `ReverseAsync` also bind and start, and the only handle you get back is the `Task`. Use `Bind` or `Play` when you need the player. A later `Bind` or `Play` on that view disposes the player the one-shot call left behind. See [One player per view](#one-player-per-view).
 
-The facade methods accept a `CancellationToken`. Cancellation does not throw out of these methods. See [Forward and reverse](#forward-and-reverse).
+Those methods accept a `CancellationToken`. Cancellation does not throw out of these methods. See [Forward and reverse](#forward-and-reverse).
 
 ### BindMotion
 
 ```csharp
 Label("Hello")
     .BindMotion(
-        Animate.Motion.Define(m => m.RotateY(0, 180).Perspective(0.004).WithDuration(500)),
+        Motion.Define(m => m.RotateY(0, 180).Perspective(0.004).WithDuration(500)),
         player => _player = player)
 ```
 
@@ -655,7 +655,7 @@ var both = enter.And(grow);   // 400 ms. Fade occupies the first 280.
 `WithDelay` holds the from-pose, then plays the motion you already described. One view is delayed. `Duration` stays the track length, and `MotionPlayer.Duration` stays that length plus the longest stagger. The hold is outside both numbers.
 
 ```csharp
-Animate.Motion.Play(
+Motion.Play(
     m => m.Opacity(0, 1).TranslateY(28, 0).WithDuration(400).WithDelay(700),
     card);
 ```
@@ -673,7 +673,7 @@ This is not `Stagger`, `Add`'s `at`, or a keyframe offset. `Stagger` offsets ext
 Stagger delays each bound target on the linear player clock. It applies to the root motion, and only when more than one view is bound. A `Stagger` on a child passed to `Add` or `Then` is ignored. A debug build logs that.
 
 ```csharp
-await Animate.Motion.ForwardAsync(
+await Motion.ForwardAsync(
     m => m
         .FadeIn()
         .Scale(0.9, 1)
@@ -808,7 +808,7 @@ static PathGeometry Bezier()
     return geometry;
 }
 
-Animate.Motion.Bind(
+Motion.Bind(
     m => m.Path(Bezier()).WithDuration(900).WithEasing(Easing.SinInOut),
     orb);
 ```

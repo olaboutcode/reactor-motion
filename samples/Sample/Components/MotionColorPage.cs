@@ -47,7 +47,7 @@ sealed class MotionColorPage : Component
         )
         .HideNavigationBar();
 
-    static VStack Swatch(string title, Action<Microsoft.Maui.Controls.BoxView?> capture, Action onLoaded)
+    static VStack Swatch(string title, Action<MauiControls.BoxView?> capture, Action onLoaded)
         => VStack(
             Label(title)
                 .HCenter()
@@ -66,8 +66,8 @@ sealed class MotionColorPage : Component
         if (_hsv is null)
             return;
         _hsvPlayer?.Dispose();
-        _hsvPlayer = Animate.Motion.Bind(
-            Animate.Motion.Define(m => m
+        _hsvPlayer = Motion.Bind(
+            Motion.Define(m => m
                 .BackgroundColor(Colors.Red, Colors.Lime)
                 .WithDuration(900)
                 .WithEasing(Easing.Linear)
@@ -80,8 +80,8 @@ sealed class MotionColorPage : Component
         if (_rgb is null)
             return;
         _rgbPlayer?.Dispose();
-        _rgbPlayer = Animate.Motion.Bind(
-            Animate.Motion.Define(m => m
+        _rgbPlayer = Motion.Bind(
+            Motion.Define(m => m
                 .BackgroundColor(Colors.Red, Colors.Lime)
                 .WithDuration(900)
                 .WithEasing(Easing.Linear)

@@ -2,7 +2,7 @@ namespace Sample.Components;
 
 sealed class MotionTransformPage : Component
 {
-    static readonly Motion Turn = Animate.Motion.Define(m => m
+    static readonly Motion Turn = Motion.Define(m => m
         .Transform(t => Matrix4.Identity
             .SetEntry(3, 2, 0.002)
             .RotateY(t * 2 * Math.PI)
@@ -10,7 +10,7 @@ sealed class MotionTransformPage : Component
         .WithDuration(900)
         .WithEasing(Easing.CubicInOut));
 
-    static readonly Motion Tilt = Animate.Motion.Define(m => m
+    static readonly Motion Tilt = Motion.Define(m => m
         .Transform(t => Matrix4.Identity
             .SetEntry(3, 2, 0.003)
             .RotateX(t * Math.PI / 5)

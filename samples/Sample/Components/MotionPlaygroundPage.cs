@@ -33,7 +33,7 @@ sealed class MotionPlaygroundPage : Component<MotionPlaygroundPageState>
             .Then(Motion.None.Scale(1, 1.1).WithDuration(180))),
     ];
 
-    Microsoft.Maui.Controls.BoxView? _box;
+    MauiControls.BoxView? _box;
     MotionPlayer? _player;
 
     protected override void OnWillUnmount()
@@ -50,7 +50,7 @@ sealed class MotionPlaygroundPage : Component<MotionPlaygroundPageState>
                     .BackNavigation("Playground")
                     .GridRow(0),
                 VStack(
-                    Label("Animate.Motion")
+                    Label("Motion")
                         .FontSize(28)
                         .HCenter(),
                     Label("Pick a recipe, then forward / reverse")
@@ -112,7 +112,7 @@ sealed class MotionPlaygroundPage : Component<MotionPlaygroundPageState>
         var motion = Recipes[recipe].Build(Motion.None);
         if (Recipes[recipe].Timed)
             motion = motion.WithDuration(600).WithEasing(Easing.CubicOut);
-        _player = Animate.Motion.Bind(motion, _box);
+        _player = Motion.Bind(motion, _box);
     }
 
     void ApplyRest(int recipe)
@@ -132,7 +132,7 @@ sealed class MotionPlaygroundPage : Component<MotionPlaygroundPageState>
 
     readonly record struct RecipeSpec(
         string Name,
-        Action<Microsoft.Maui.Controls.BoxView> Rest,
+        Action<MauiControls.BoxView> Rest,
         Func<Motion, Motion> Build,
         bool Timed = true);
 }
