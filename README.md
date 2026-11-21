@@ -318,7 +318,9 @@ m.WithDuration(280).WithEasing(Easing.CubicOut)
 
 On a recipe whose tracks all span the full motion, `WithDuration` replaces the length. Keyframe offsets are fractions of that length, so they stretch with it.
 
-On a recipe that already has windows (a timeline, or anything whose tracks are not `[0, 1]`), `WithDuration` only grows the clock. A shorter value is ignored. Existing windows stay the same number of milliseconds and the extra time is padding at the end. Leaf motions are not scaled to fill the new length.
+On a recipe built with `Motion.Timeline`, `WithDuration` gives that length to every beat that did not call `WithDuration` itself, then rebuilds the windows. A beat that set its own length keeps it. `WithEasing` is the curve for every beat that did not call `WithEasing`. One beat still replaces its length, including a second `WithDuration` on that same beat.
+
+On any other recipe that already has windows, `WithDuration` only grows the clock. A shorter value is ignored. Existing windows stay the same number of milliseconds and the extra time is padding at the end.
 
 `WithDuration` and `WithSpring` are mutually exclusive. A debug build asserts if you call `WithDuration` on a spring recipe. Playback follows the spring until rest. See [Springs](#springs).
 
@@ -362,6 +364,7 @@ player.Forward();
 | Member | Role |
 |---|---|
 | `Define(Func<Motion, Motion> configure)` | `configure(Motion.None)`. |
+| `Timeline(Func<Motion, Motion> configure, string? id = null)` | First beat of a timeline. `id` names it for `Seek`. |
 | `Bind(Motion motion, VisualElement target)` | Bind one view. Does not start. |
 | `Bind(Motion motion, IEnumerable<VisualElement> targets)` | Bind many views. Does not start. The order is the stagger order. |
 | `Bind(Func<Motion, Motion> configure, VisualElement target)` | Define, then bind. |
@@ -726,28 +729,27 @@ Sequential steps in milliseconds belong on `Then`, not on `Keyframes`.
 
 ### Timeline
 
-`Add` places a child on the parent clock. `Then` places it at the current end.
+`Motion.Timeline` is the first beat. `Then` appends a beat. `Add` places one at a time. Each callback receives an empty motion.
 
 ```csharp
-var intro = Motion.None
-    .FadeIn()
-    .SlideIn(SlideFrom.Left, 48)
-    .WithDuration(280);
-
-var pulse = Motion.None
-    .Scale(1, 1.12)
-    .WithDuration(200);
-
-var timeline = Motion.None
+var timeline = Motion.Timeline(
+        m => m.FadeIn().SlideIn(SlideFrom.Left, 48),
+        "intro")
+    .Then(m => m.Scale(1, 1.12).WithDuration(200), "pulse")
     .WithDuration(280)
-    .Add(intro, at: 0, id: "intro")
-    .Then(pulse, id: "pulse");
+    .WithEasing(Easing.CubicOut);
 
 player.Seek("pulse");
 ```
 
+The intro is 280 ms. The pulse set its own 200 ms, so it stays 200 ms. Both use `CubicOut` unless a beat calls `WithEasing`.
+
 | Member | Role |
 |---|---|
+| `Timeline(Func<Motion, Motion> configure, string? id = null)` | Builds the first beat. The result is a timeline, so a later `WithDuration` / `WithEasing` applies to every beat that did not set its own. |
+| `Then(Func<Motion, Motion> configure, string? id = null)` | Builds a beat and appends it after the current span. |
+| `Add(Func<Motion, Motion> configure, uint at = 0, string? id = null)` | Builds a beat and inserts it at `at` milliseconds. |
+| `And(Func<Motion, Motion> configure)` | Builds a recipe and plays it at the same time as the receiver. |
 | `Add(Motion child, uint at = 0, string? id = null)` | Inserts `child` at `at + child.Delay` milliseconds. Parent length becomes `max(current, at + child.Delay + child.Duration)`. The parent's own delay stays the player hold. |
 | `Then(Motion next, string? id = null)` | `Add(next, Duration, id)`. |
 
@@ -755,7 +757,9 @@ Children are flattened immediately. Their tracks are shifted in milliseconds and
 
 `id` records a named window as a fraction of the parent length. Duplicate ids keep the last one. `Seek(id)` and `TrySpan` read those windows. See [Seek](#seek).
 
-`Motion.None` is already 300 ms long, even with no tracks. Adding a 100 ms child onto a bare `None` produces a 300 ms parent, and the child occupies the first 100 ms. Set `WithDuration` on the base, or on the children before you add them, when that padding is not what you want. The sample timeline starts from `Motion.None.WithDuration(280)` so the intro window matches the intro.
+`WithDuration` on a `Timeline` sets every beat that did not call `WithDuration`, then lays the beats out again. A `Then` beat follows the new end. An `Add` beat keeps its `at`. A child `WithDelay` stays a gap before that beat. `WithEasing` sets the curve for every beat that did not call `WithEasing`. A beat that did call it keeps that curve.
+
+`Motion.None` is already 300 ms long, even with no tracks. Adding a 100 ms child onto a bare `None` produces a 300 ms parent, and the child occupies the first 100 ms. That form is not a `Timeline`: `WithDuration` on it still pads the end instead of setting each beat.
 
 `And` shifts named windows into the merged length, after each side's delay. It does not give a merged recipe a new id. Pass the id to `Add` or `Then`.
 

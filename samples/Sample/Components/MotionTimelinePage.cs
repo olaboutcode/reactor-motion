@@ -55,12 +55,12 @@ sealed class MotionTimelinePage : Component
             return;
         _player?.Dispose();
         ApplyRest();
-        var intro = Motion.None.FadeIn().SlideIn(SlideFrom.Left, 48).WithDuration(280).WithEasing(Easing.CubicOut);
-        var pulse = Motion.None.Scale(1, 1.12).WithDuration(200).WithEasing(Easing.CubicOut);
         _player = Motion.Bind(
-            Motion.None.WithDuration(280)
-                .Add(intro, 0, "intro")
-                .Then(pulse, "pulse"),
+            Motion
+                .Timeline(m => m.FadeIn().SlideIn(SlideFrom.Left, 48), "intro")
+                .Then(m => m.Scale(1, 1.12).WithDuration(200), "pulse")
+                .WithDuration(280)
+                .WithEasing(Easing.CubicOut),
             _box);
     }
 

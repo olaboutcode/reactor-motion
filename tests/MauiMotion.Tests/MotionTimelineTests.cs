@@ -242,4 +242,168 @@ public sealed class MotionTimelineTests
         Assert.Equal(1, box.Opacity, 3);
         Assert.Equal(40, box.TranslationX, 3);
     }
+
+    [Fact]
+    public void Timeline_one_beat_replaces_its_duration()
+    {
+        var motion = Motion.Timeline(m => m.Opacity(0, 1).WithDuration(280))
+            .WithDuration(200);
+
+        Assert.Equal(200u, motion.Duration);
+    }
+
+    [Fact]
+    public void Timeline_names_the_first_beat()
+    {
+        var motion = Motion.Timeline(m => m.Opacity(0, 1).WithDuration(200), "intro")
+            .Then(m => m.Opacity(1, 0).WithDuration(200), "pulse")
+            .WithEasing(Easing.Linear);
+        var player = MotionPlayer.Create(motion, [new BoxView()], new MotionClock(manual: true));
+
+        Assert.Equal(400u, motion.Duration);
+        Assert.True(player.TrySpan("intro", out var introBegin, out var introEnd));
+        Assert.True(player.TrySpan("pulse", out var pulseBegin, out var pulseEnd));
+        Assert.Equal(0, introBegin, 3);
+        Assert.Equal(0.5, introEnd, 3);
+        Assert.Equal(0.5, pulseBegin, 3);
+        Assert.Equal(1, pulseEnd, 3);
+        player.Seek("pulse");
+        Assert.Equal(0.5, player.Progress, 3);
+    }
+
+    [Fact]
+    public void Timeline_duration_and_easing_apply_to_beats_that_did_not_set_them()
+    {
+        var box = new BoxView { Opacity = 0, TranslationX = 0 };
+        var clock = new MotionClock(manual: true);
+        var motion = Motion.Timeline(m => m.Opacity(0, 1), "intro")
+            .Then(m => m.TranslateX(0, 100).WithDuration(120).WithEasing(Easing.Linear), "pulse")
+            .WithDuration(280)
+            .WithEasing(Easing.CubicOut);
+
+        Assert.Equal(400u, motion.Duration);
+        var player = MotionPlayer.Create(motion, [box], clock);
+        Assert.True(player.TrySpan("intro", out var introBegin, out var introEnd));
+        Assert.True(player.TrySpan("pulse", out var pulseBegin, out var pulseEnd));
+        Assert.Equal(0, introBegin, 3);
+        Assert.Equal(0.7, introEnd, 3);
+        Assert.Equal(0.7, pulseBegin, 3);
+        Assert.Equal(1, pulseEnd, 3);
+
+        _ = player.ForwardAsync();
+        clock.Tick(140);
+        Assert.Equal(Easing.CubicOut.Ease(0.5), box.Opacity, 3);
+        Assert.Equal(0, box.TranslationX, 3);
+        clock.Tick(140);
+        Assert.Equal(1, box.Opacity, 3);
+        Assert.Equal(0, box.TranslationX, 3);
+        clock.Tick(60);
+        Assert.Equal(50, box.TranslationX, 3);
+        clock.Tick(60);
+        Assert.Equal(100, box.TranslationX, 3);
+        Assert.Equal(MotionPlaybackStatus.Completed, player.Status);
+    }
+
+    [Fact]
+    public void Timeline_shared_duration_sets_every_unset_beat()
+    {
+        var motion = Motion.Timeline(m => m.FadeIn())
+            .Then(m => m.FadeOut())
+            .WithDuration(280);
+
+        Assert.Equal(560u, motion.Duration);
+    }
+
+    [Fact]
+    public void Timeline_keeps_a_child_delay_when_duration_is_shared()
+    {
+        var box = new BoxView { Opacity = 1, TranslationX = 0 };
+        var clock = new MotionClock(manual: true);
+        var motion = Motion.Timeline(m => m.Opacity(0, 1))
+            .Then(m => m.TranslateX(0, 40).WithDelay(100))
+            .WithDuration(200)
+            .WithEasing(Easing.Linear);
+
+        Assert.Equal(500u, motion.Duration);
+        var player = MotionPlayer.Create(motion, [box], clock);
+        _ = player.ForwardAsync();
+        clock.Tick(200);
+        Assert.Equal(1, box.Opacity, 3);
+        Assert.Equal(0, box.TranslationX, 3);
+        clock.Tick(100);
+        Assert.Equal(0, box.TranslationX, 3);
+        clock.Tick(100);
+        Assert.Equal(20, box.TranslationX, 3);
+        clock.Tick(100);
+        Assert.Equal(40, box.TranslationX, 3);
+    }
+
+    [Fact]
+    public void Timeline_add_keeps_its_start_when_duration_is_shared()
+    {
+        var box = new BoxView { Opacity = 0, TranslationX = 0 };
+        var clock = new MotionClock(manual: true);
+        var motion = Motion.Timeline(m => m.Opacity(0, 1))
+            .Add(m => m.TranslateX(0, 90), at: 80)
+            .WithDuration(100)
+            .WithEasing(Easing.Linear);
+
+        Assert.Equal(180u, motion.Duration);
+        var player = MotionPlayer.Create(motion, [box], clock);
+        _ = player.ForwardAsync();
+        clock.Tick(80);
+        Assert.Equal(0.8, box.Opacity, 3);
+        Assert.Equal(0, box.TranslationX, 3);
+        clock.Tick(20);
+        Assert.Equal(1, box.Opacity, 3);
+        Assert.Equal(18, box.TranslationX, 3);
+        clock.Tick(80);
+        Assert.Equal(90, box.TranslationX, 3);
+    }
+
+    [Fact]
+    public void Timeline_and_runs_inside_the_first_beat()
+    {
+        var box = new BoxView { Opacity = 0, TranslationX = 0 };
+        var clock = new MotionClock(manual: true);
+        var motion = Motion.Timeline(m => m
+                .Opacity(0, 1)
+                .And(n => n.TranslateX(0, 40)))
+            .WithDuration(200)
+            .WithEasing(Easing.Linear);
+
+        Assert.Equal(200u, motion.Duration);
+        var player = MotionPlayer.Create(motion, [box], clock);
+        _ = player.ForwardAsync();
+        clock.Tick(100);
+        Assert.Equal(0.5, box.Opacity, 3);
+        Assert.Equal(20, box.TranslationX, 3);
+    }
+
+    [Fact]
+    public void Then_lambda_appends_at_the_current_span()
+    {
+        var motion = Motion.None.FadeIn().WithDuration(100).WithEasing(Easing.Linear)
+            .Then(m => m.FadeOut().WithDuration(100).WithEasing(Easing.Linear));
+
+        Assert.Equal(200u, motion.Duration);
+    }
+
+    [Fact]
+    public void Windowed_with_duration_still_pads_when_the_recipe_is_not_a_timeline()
+    {
+        var box = new BoxView { Opacity = 0 };
+        var clock = new MotionClock(manual: true);
+        var motion = Motion.None.Opacity(0, 1).WithDuration(100).WithEasing(Easing.Linear)
+            .Then(Motion.None.Opacity(1, 0).WithDuration(100).WithEasing(Easing.Linear))
+            .WithDuration(400);
+
+        Assert.Equal(400u, motion.Duration);
+        var player = MotionPlayer.Create(motion, [box], clock);
+        _ = player.ForwardAsync();
+        clock.Tick(100);
+        Assert.Equal(1, box.Opacity, 3);
+        clock.Tick(100);
+        Assert.Equal(0, box.Opacity, 3);
+    }
 }

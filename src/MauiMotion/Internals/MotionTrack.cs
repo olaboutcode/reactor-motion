@@ -7,7 +7,26 @@ namespace Reactor.Motion.Internals;
 /// Named child window on a motion timeline. <c>Begin</c> and <c>End</c> are
 /// fractions of the parent span. <c>Seek(id)</c> and <c>TrySpan</c> use the id.
 /// </summary>
-internal readonly record struct NamedSpan(string Id, double Begin, double End);
+internal readonly record struct NamedSpan(string Id, double Begin, double End)
+{
+    /// <summary>Beat that owns this window. <c>-1</c> until a timeline beat is assigned.</summary>
+    public int BeatId { get; init; } = -1;
+}
+
+/// <summary>
+/// One flattened child on a <see cref="Motion"/> built with <c>Timeline</c>.
+/// <c>StartMs</c> is where the child's tracks sit on the parent clock.
+/// <c>FollowsEnd</c> means the child was placed with <c>Then</c> and moves when earlier beats change length.
+/// <c>LengthLocked</c> means the child called <c>WithDuration</c> and a later timeline <c>WithDuration</c> leaves it alone.
+/// </summary>
+internal readonly record struct TimelineBeat(
+    int Id,
+    uint At,
+    bool FollowsEnd,
+    uint Delay,
+    uint Length,
+    bool LengthLocked,
+    uint StartMs);
 
 /// <summary>
 /// Channels that are not a <see cref="BindableProperty"/>. <see cref="SemanticTrack.None"/>
@@ -48,6 +67,11 @@ internal readonly record struct MotionTrack(
     /// the whole transform for that frame.
     /// </summary>
     public Func<double, Matrix4>? Transform { get; init; }
+
+    /// <summary>
+    /// Beat that owns this track. <c>-1</c> means the track is not part of a timeline beat.
+    /// </summary>
+    public int BeatId { get; init; } = -1;
 }
 
 /// <summary>

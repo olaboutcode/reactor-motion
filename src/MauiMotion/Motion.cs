@@ -42,6 +42,10 @@ public sealed class Motion
     readonly ColorSpace _colorSpace;
     readonly Spring? _spring;
     readonly double? _perspective;
+    readonly bool _timeline;
+    readonly bool _durationSet;
+    readonly bool _easingSet;
+    readonly IReadOnlyList<TimelineBeat> _beats;
 
     Motion(
         uint duration,
@@ -54,7 +58,11 @@ public sealed class Motion
         ColorSpace colorSpace,
         Spring? spring,
         double? perspective,
-        uint delay)
+        uint delay,
+        bool timeline = false,
+        bool durationSet = false,
+        bool easingSet = false,
+        IReadOnlyList<TimelineBeat>? beats = null)
     {
         Duration = duration;
         Easing = easing;
@@ -67,6 +75,10 @@ public sealed class Motion
         _spring = spring;
         _perspective = perspective;
         Delay = delay;
+        _timeline = timeline;
+        _durationSet = durationSet;
+        _easingSet = easingSet;
+        _beats = beats ?? [];
     }
 
     /// <summary>
@@ -77,7 +89,7 @@ public sealed class Motion
 
     /// <summary>
     /// Milliseconds the player holds the from-pose before the tracks move.
-    /// Default is 0. A child delay passed to <see cref="Add(Motion, uint, string?)"/> or <see cref="And"/>
+    /// Default is 0. A child delay passed to <see cref="Add(Motion, uint, string?)"/> or <see cref="And(Motion)"/>
     /// is baked into that child's windows and is not this hold.
     /// </summary>
     public uint Delay { get; }
@@ -108,9 +120,12 @@ public sealed class Motion
     internal double? PerspectiveEntry => _perspective;
 
     /// <summary>
-    /// Sets the length in milliseconds. On a full-span recipe, replaces
-    /// <see cref="Duration"/>. On a windowed recipe, a shorter value is ignored
-    /// and a longer value pads the end.
+    /// Sets the length in milliseconds.
+    /// A full-span recipe replaces <see cref="Duration"/>.
+    /// On a <see cref="Timeline"/> with several beats, each beat that did not call
+    /// <see cref="WithDuration"/> itself takes this length and the windows are rebuilt.
+    /// A beat that called <see cref="WithDuration"/> keeps its length.
+    /// Any other windowed recipe ignores a shorter value and pads the end when the value is longer.
     /// A debug assert fires when <see cref="WithSpring"/> is already set.
     /// </summary>
     public Motion WithDuration(uint milliseconds)
@@ -118,33 +133,29 @@ public sealed class Motion
         if (_spring is not null)
             System.Diagnostics.Debug.Assert(false, "WithDuration is ignored when WithSpring is set.");
 
-        if (milliseconds == Duration)
-            return this;
+        if (_timeline && _beats.Count > 1)
+            return RestretchBeats(milliseconds);
 
-        var fullSpan = _tracks.Count == 0 || AllFullSpan(_tracks);
-        if (fullSpan)
-            return Copy(duration: milliseconds);
+        if (_timeline && _beats.Count == 1 && AllFullSpan(_tracks) && _beats[0].Delay == 0)
+            return ReplaceSingleBeat(milliseconds);
 
-        var span = Math.Max(Duration, milliseconds);
-        if (span == Duration)
-            return this;
-        return Copy(
-            duration: span,
-            tracks: Rebase(_tracks, Duration, span),
-            spans: RebaseSpans(_spans, Duration, span));
+        return ApplyDuration(milliseconds);
     }
 
     /// <summary>
     /// Replaces the easing. <see langword="null"/> throws.
     /// Default is <see cref="Easing.CubicOut"/>.
+    /// A beat that called <see cref="WithEasing"/> keeps its curve. Other beats use this one.
     /// </summary>
     public Motion WithEasing(Easing easing)
-        => Copy(easing: easing ?? throw new ArgumentNullException(nameof(easing)));
+        => Copy(
+            easing: easing ?? throw new ArgumentNullException(nameof(easing)),
+            easingSet: true);
 
     /// <summary>
     /// Hold the from-pose for <paramref name="milliseconds"/> before the tracks move.
     /// Does not change <see cref="Duration"/>. <c>0</c> clears a delay set earlier.
-    /// On a child of <see cref="Add(Motion, uint, string?)"/> or <see cref="And"/>, this wait is baked into
+    /// On a child of <see cref="Add(Motion, uint, string?)"/> or <see cref="And(Motion)"/>, this wait is baked into
     /// that child's windows. On the motion you bind, it is the player hold.
     /// </summary>
     public Motion WithDelay(uint milliseconds)
@@ -632,35 +643,16 @@ public sealed class Motion
     /// values: last wins.
     /// </summary>
     public Motion Add(Motion child, uint at = 0, string? id = null)
+        => Add(child, at, id, followsEnd: false);
+
+    /// <summary>
+    /// Builds <paramref name="configure"/> from an empty motion and places it at
+    /// <paramref name="at"/> milliseconds. Same window rules as <see cref="Add(Motion, uint, string?)"/>.
+    /// </summary>
+    public Motion Add(Func<Motion, Motion> configure, uint at = 0, string? id = null)
     {
-        ArgumentNullException.ThrowIfNull(child);
-        if (child._stagger is not null)
-            System.Diagnostics.Debug.WriteLine("Motion.Add: nested Stagger is ignored (root only).");
-
-        var childStart = at + child.Delay;
-        var childSpan = child.Duration;
-        var newSpan = Math.Max(Duration, childStart + childSpan);
-        var existing = Duration == newSpan ? _tracks : Rebase(_tracks, Duration, newSpan);
-        var shifted = Shift(child._tracks, childStart, childSpan, newSpan);
-        WarnOverlap(existing, shifted);
-
-        var spans = ConcatSpans(
-            Duration == newSpan ? _spans : RebaseSpans(_spans, Duration, newSpan),
-            ShiftSpans(child._spans, childStart, childSpan, newSpan));
-        if (!string.IsNullOrWhiteSpace(id) && newSpan > 0)
-        {
-            spans = PutSpan(spans, new NamedSpan(
-                id,
-                (double)childStart / newSpan,
-                (double)(childStart + childSpan) / newSpan));
-        }
-
-        return Copy(
-            duration: newSpan,
-            tracks: Concat(existing, shifted),
-            spans: spans,
-            perspective: child._perspective,
-            setPerspective: child._perspective.HasValue);
+        ArgumentNullException.ThrowIfNull(configure);
+        return Add(configure(None), at, id);
     }
 
     /// <summary>
@@ -669,7 +661,17 @@ public sealed class Motion
     /// Use <see cref="Add(Motion, uint, string?)"/> to start at 0.
     /// </summary>
     public Motion Then(Motion next, string? id = null)
-        => Add(next, Duration, id);
+        => Add(next, Duration, id, followsEnd: true);
+
+    /// <summary>
+    /// Builds <paramref name="configure"/> from an empty motion and appends it
+    /// after the current span. Same rules as <see cref="Then(Motion, string?)"/>.
+    /// </summary>
+    public Motion Then(Func<Motion, Motion> configure, string? id = null)
+    {
+        ArgumentNullException.ThrowIfNull(configure);
+        return Then(configure(None), id);
+    }
 
     /// <summary>
     /// Plays <paramref name="other"/> at the same time. The parent span is the
@@ -685,9 +687,7 @@ public sealed class Motion
         var rightEnd = (long)other.Delay + other.Duration;
         var spanLong = Math.Max(leftEnd, rightEnd);
         var span = spanLong > uint.MaxValue ? uint.MaxValue : (uint)spanLong;
-        var easing = !ReferenceEquals(other.Easing, Timing.MotionEasing)
-            ? other.Easing
-            : Easing;
+        var easing = other._easingSet ? other.Easing : Easing;
         var tracks = Concat(
             Shift(_tracks, Delay, Duration, span),
             Shift(other._tracks, other.Delay, other.Duration, span));
@@ -705,7 +705,19 @@ public sealed class Motion
             other._colorSpace,
             other._spring ?? _spring,
             other._perspective ?? _perspective,
-            0);
+            0,
+            durationSet: _durationSet || other._durationSet,
+            easingSet: _easingSet || other._easingSet);
+    }
+
+    /// <summary>
+    /// Builds <paramref name="configure"/> from an empty motion and plays it at the same time.
+    /// Same rules as <see cref="And(Motion)"/>.
+    /// </summary>
+    public Motion And(Func<Motion, Motion> configure)
+    {
+        ArgumentNullException.ThrowIfNull(configure);
+        return And(configure(None));
     }
 
     /// <summary>
@@ -725,6 +737,25 @@ public sealed class Motion
     /// </summary>
     public static Motion Define(Func<Motion, Motion> configure)
         => configure(None);
+
+    /// <summary>
+    /// First beat of a timeline. <paramref name="configure"/> receives an empty motion.
+    /// Pass <paramref name="id"/> to name that beat for <see cref="MotionPlayer.Seek(string)"/>.
+    /// Further beats are <see cref="Then(Func{Motion, Motion}, string?)"/> and
+    /// <see cref="Add(Func{Motion, Motion}, uint, string?)"/>.
+    /// <see cref="WithDuration"/> then gives one length to every beat that did not set its own.
+    /// <see cref="WithEasing"/> does the same for the curve.
+    /// </summary>
+    public static Motion Timeline(Func<Motion, Motion> configure, string? id = null)
+    {
+        ArgumentNullException.ThrowIfNull(configure);
+        var first = configure(None);
+        if (!first._timeline)
+            first = first.Copy(timeline: true);
+        if (string.IsNullOrWhiteSpace(id) || first.Duration == 0)
+            return first;
+        return first.Copy(spans: PutSpan(first._spans, new NamedSpan(id, 0, 1)));
+    }
 
     /// <summary>
     /// Binds <paramref name="motion"/> to <paramref name="target"/>. Does not start playback.
@@ -924,7 +955,11 @@ public sealed class Motion
         bool setSpring = false,
         double? perspective = null,
         bool setPerspective = false,
-        uint? delay = null)
+        uint? delay = null,
+        bool? timeline = null,
+        bool? durationSet = null,
+        bool? easingSet = null,
+        IReadOnlyList<TimelineBeat>? beats = null)
         => new(
             duration ?? Duration,
             easing ?? Easing,
@@ -936,7 +971,11 @@ public sealed class Motion
             colorSpace ?? _colorSpace,
             setSpring ? spring : _spring,
             setPerspective ? perspective : _perspective,
-            delay ?? Delay);
+            delay ?? Delay,
+            timeline ?? _timeline,
+            durationSet ?? _durationSet,
+            easingSet ?? _easingSet,
+            beats ?? _beats);
 
     bool HasTransformTrack()
     {
@@ -1119,6 +1158,349 @@ public sealed class Motion
 
     static IReadOnlyList<NamedSpan> PutSpan(IReadOnlyList<NamedSpan> spans, NamedSpan next)
         => CompactSpans(ConcatSpans(spans, [next]));
+
+    Motion Add(Motion child, uint at, string? id, bool followsEnd)
+    {
+        ArgumentNullException.ThrowIfNull(child);
+        if (child._stagger is not null)
+            System.Diagnostics.Debug.WriteLine("Motion.Add: nested Stagger is ignored (root only).");
+
+        var childTracks = child._easingSet ? StampEasing(child._tracks, child.Easing) : child._tracks;
+        var tracks = _tracks;
+        var beats = _beats;
+        var rootSpans = _spans;
+        var trackBeats = _timeline && (beats.Count > 0 || tracks.Count == 0 || AllFullSpan(tracks));
+        if (trackBeats && beats.Count == 0)
+        {
+            tracks = WithBeat(tracks, 0);
+            beats = [new TimelineBeat(0, 0, false, 0, Duration, _durationSet, 0)];
+            rootSpans = WithSpanBeat(rootSpans, 0, force: false);
+        }
+
+        var childStart = at + child.Delay;
+        var childSpan = child.Duration;
+        var newSpan = Math.Max(Duration, childStart + childSpan);
+        var existing = Duration == newSpan ? tracks : Rebase(tracks, Duration, newSpan);
+        var shifted = Shift(childTracks, childStart, childSpan, newSpan);
+        var childSpans = ShiftSpans(child._spans, childStart, childSpan, newSpan);
+        if (trackBeats)
+        {
+            var beatId = NextBeatId(beats);
+            shifted = WithBeat(shifted, beatId);
+            childSpans = WithSpanBeat(childSpans, beatId, force: true);
+            var grown = new TimelineBeat[beats.Count + 1];
+            for (var i = 0; i < beats.Count; i++)
+                grown[i] = beats[i];
+            grown[beats.Count] = new TimelineBeat(
+                beatId, at, followsEnd, child.Delay, childSpan, child._durationSet, childStart);
+            beats = grown;
+        }
+
+        WarnOverlap(existing, shifted);
+
+        var spans = ConcatSpans(
+            Duration == newSpan ? rootSpans : RebaseSpans(rootSpans, Duration, newSpan),
+            childSpans);
+        if (!string.IsNullOrWhiteSpace(id) && newSpan > 0)
+        {
+            var beatId = trackBeats ? beats[^1].Id : -1;
+            spans = PutSpan(spans, new NamedSpan(
+                id,
+                (double)childStart / newSpan,
+                (double)(childStart + childSpan) / newSpan)
+            {
+                BeatId = beatId,
+            });
+        }
+
+        return Copy(
+            duration: newSpan,
+            tracks: Concat(existing, shifted),
+            spans: spans,
+            perspective: child._perspective,
+            setPerspective: child._perspective.HasValue,
+            beats: beats);
+    }
+
+    Motion ApplyDuration(uint milliseconds)
+    {
+        if (milliseconds == Duration)
+            return _durationSet ? this : Copy(durationSet: true);
+
+        var fullSpan = _tracks.Count == 0 || AllFullSpan(_tracks);
+        if (fullSpan)
+            return Copy(duration: milliseconds, durationSet: true);
+
+        var span = Math.Max(Duration, milliseconds);
+        if (span == Duration)
+            return _durationSet ? this : Copy(durationSet: true);
+
+        return Copy(
+            duration: span,
+            tracks: Rebase(_tracks, Duration, span),
+            spans: RebaseSpans(_spans, Duration, span),
+            durationSet: true);
+    }
+
+    Motion ReplaceSingleBeat(uint milliseconds)
+    {
+        var sized = ApplyDuration(milliseconds);
+        var beat = sized._beats[0] with
+        {
+            Length = sized.Duration,
+            LengthLocked = true,
+            StartMs = 0,
+        };
+        if (ReferenceEquals(sized, this) && beat.Equals(_beats[0]))
+            return this;
+        return sized.Copy(beats: [beat]);
+    }
+
+    Motion RestretchBeats(uint milliseconds)
+    {
+        var count = _beats.Count;
+        var placed = new (uint Start, uint Length)[count];
+        long cursor = 0;
+        var changed = false;
+        for (var i = 0; i < count; i++)
+        {
+            var beat = _beats[i];
+            var length = beat.LengthLocked ? beat.Length : milliseconds;
+            if (length != beat.Length)
+                changed = true;
+            var origin = beat.FollowsEnd ? cursor : beat.At;
+            var start = origin + beat.Delay;
+            var end = start + length;
+            if (end > cursor)
+                cursor = end;
+            placed[i] = (ClampUInt(start), ClampUInt(length));
+        }
+
+        var span = ClampUInt(cursor);
+        if (!changed && span == Duration)
+            return this;
+
+        var oldDuration = Duration;
+        var tracks = new MotionTrack[_tracks.Count];
+        for (var i = 0; i < _tracks.Count; i++)
+        {
+            var track = _tracks[i];
+            var index = BeatIndex(track.BeatId);
+            if (index < 0 || oldDuration == 0)
+            {
+                tracks[i] = track;
+                continue;
+            }
+
+            var beat = _beats[index];
+            var place = placed[index];
+            tracks[i] = track with
+            {
+                Begin = PlaceEdge(track.Begin, oldDuration, beat, place, span),
+                End = PlaceEdge(track.End, oldDuration, beat, place, span),
+            };
+        }
+
+        var spans = new NamedSpan[_spans.Count];
+        for (var i = 0; i < _spans.Count; i++)
+        {
+            var named = _spans[i];
+            spans[i] = named with
+            {
+                Begin = span == 0 ? 0 : MapBeatPoint(named.Begin * oldDuration, named.BeatId, _beats, placed) / span,
+                End = span == 0 ? 0 : MapBeatPoint(named.End * oldDuration, named.BeatId, _beats, placed) / span,
+            };
+        }
+
+        var beats = new TimelineBeat[count];
+        for (var i = 0; i < count; i++)
+        {
+            beats[i] = _beats[i] with
+            {
+                Length = placed[i].Length,
+                StartMs = placed[i].Start,
+            };
+        }
+
+        return Copy(duration: span, tracks: tracks, spans: spans, beats: beats);
+    }
+
+    static double MapBeatPoint(
+        double ms,
+        int beatId,
+        IReadOnlyList<TimelineBeat> beats,
+        (uint Start, uint Length)[] placed)
+    {
+        var index = -1;
+        if (beatId >= 0)
+        {
+            for (var i = 0; i < beats.Count; i++)
+            {
+                if (beats[i].Id == beatId)
+                {
+                    index = i;
+                    break;
+                }
+            }
+        }
+
+        if (index < 0)
+            index = BeatContaining(ms, beats);
+        if (index >= 0)
+            return ThroughBeat(beats[index], placed[index], ms);
+
+        return ThroughGap(ms, beats, placed);
+    }
+
+    static int BeatContaining(double ms, IReadOnlyList<TimelineBeat> beats)
+    {
+        var best = -1;
+        var bestLength = double.MaxValue;
+        for (var i = 0; i < beats.Count; i++)
+        {
+            var beat = beats[i];
+            var start = (double)beat.StartMs;
+            var end = start + beat.Length;
+            if (ms < start - 0.001 || ms > end + 0.001)
+                continue;
+            if (beat.Length == 0)
+            {
+                if (best < 0 && Math.Abs(ms - start) <= 0.001)
+                    best = i;
+                continue;
+            }
+
+            if (beat.Length < bestLength)
+            {
+                best = i;
+                bestLength = beat.Length;
+            }
+        }
+
+        return best;
+    }
+
+    static double ThroughGap(
+        double ms,
+        IReadOnlyList<TimelineBeat> beats,
+        (uint Start, uint Length)[] placed)
+    {
+        var order = new int[beats.Count];
+        for (var i = 0; i < beats.Count; i++)
+            order[i] = i;
+        Array.Sort(order, (a, b) => beats[a].StartMs.CompareTo(beats[b].StartMs));
+
+        double prevOld = 0;
+        double prevNew = 0;
+        for (var n = 0; n < order.Length; n++)
+        {
+            var index = order[n];
+            var start = (double)beats[index].StartMs;
+            if (ms < start)
+            {
+                var gap = start - prevOld;
+                var local = gap <= 0 ? 0 : (ms - prevOld) / gap;
+                var newStart = (double)placed[index].Start;
+                return prevNew + (local * (newStart - prevNew));
+            }
+
+            prevOld = start + beats[index].Length;
+            prevNew = placed[index].Start + (double)placed[index].Length;
+        }
+
+        return prevNew + (ms - prevOld);
+    }
+
+    static double ThroughBeat(TimelineBeat beat, (uint Start, uint Length) place, double ms)
+    {
+        var local = beat.Length == 0 ? 0 : (ms - beat.StartMs) / beat.Length;
+        if (local < 0)
+            local = 0;
+        else if (local > 1)
+            local = 1;
+        return place.Start + (local * place.Length);
+    }
+
+    int BeatIndex(int id)
+    {
+        for (var i = 0; i < _beats.Count; i++)
+        {
+            if (_beats[i].Id == id)
+                return i;
+        }
+
+        return -1;
+    }
+
+    static double PlaceEdge(
+        double fraction,
+        uint oldDuration,
+        TimelineBeat beat,
+        (uint Start, uint Length) place,
+        uint span)
+    {
+        if (span == 0)
+            return 0;
+
+        var local = beat.Length == 0
+            ? 0
+            : ((fraction * oldDuration) - beat.StartMs) / beat.Length;
+        return (place.Start + (local * place.Length)) / span;
+    }
+
+    static uint ClampUInt(long value)
+    {
+        if (value <= 0)
+            return 0;
+        if (value >= uint.MaxValue)
+            return uint.MaxValue;
+        return (uint)value;
+    }
+
+    static MotionTrack[] StampEasing(IReadOnlyList<MotionTrack> tracks, Easing easing)
+    {
+        var copy = new MotionTrack[tracks.Count];
+        for (var i = 0; i < tracks.Count; i++)
+        {
+            var track = tracks[i];
+            copy[i] = track.Easing is null ? track with { Easing = easing } : track;
+        }
+
+        return copy;
+    }
+
+    static MotionTrack[] WithBeat(IReadOnlyList<MotionTrack> tracks, int beatId)
+    {
+        var copy = new MotionTrack[tracks.Count];
+        for (var i = 0; i < tracks.Count; i++)
+            copy[i] = tracks[i] with { BeatId = beatId };
+
+        return copy;
+    }
+
+    static NamedSpan[] WithSpanBeat(IReadOnlyList<NamedSpan> spans, int beatId, bool force)
+    {
+        var copy = new NamedSpan[spans.Count];
+        for (var i = 0; i < spans.Count; i++)
+        {
+            var span = spans[i];
+            copy[i] = !force && span.BeatId >= 0 ? span : span with { BeatId = beatId };
+        }
+
+        return copy;
+    }
+
+    static int NextBeatId(IReadOnlyList<TimelineBeat> beats)
+    {
+        var max = -1;
+        for (var i = 0; i < beats.Count; i++)
+        {
+            if (beats[i].Id > max)
+                max = beats[i].Id;
+        }
+
+        return max + 1;
+    }
 
     static IReadOnlyList<NamedSpan> CompactSpans(IReadOnlyList<NamedSpan> spans)
     {
