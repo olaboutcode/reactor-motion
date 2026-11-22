@@ -3,7 +3,7 @@
 [![CI](https://github.com/olaboutcode/reactor-motion/actions/workflows/ci.yml/badge.svg)](https://github.com/olaboutcode/reactor-motion/actions/workflows/ci.yml)
 [![NuGet](https://img.shields.io/nuget/vpre/Reactor.Motion.svg)](https://www.nuget.org/packages/Reactor.Motion/)
 
-In-page view motion for [MauiReactor](https://github.com/adospace/reactorui-maui). A recipe can fade, slide, scale, stagger, follow keyframes or a timeline, spring, walk a path, write a matrix, or enter and exit while the view stays until the exit finishes.
+In-page view motion for [MauiReactor](https://github.com/adospace/reactorui-maui). A recipe can fade, slide, scale, stagger, follow keyframes or a timeline, spring, walk a path, write a matrix, or enter and exit while the view stays until the exit finishes. A keyed collection slides its items when they are inserted, removed, or reordered.
 
 > [!WARNING]
 > The library is still experimental, use at your own risk. The performance seems decent and all the features should be working as expected. However, expect breaking changes as I work on the API.
@@ -35,6 +35,7 @@ In-page view motion for [MauiReactor](https://github.com/adospace/reactorui-maui
   - [Bind and play](#bind-and-play)
   - [BindMotion](#bindmotion)
   - [Enter and exit](#enter-and-exit)
+  - [Collection](#collection)
   - [MotionPlayer](#motionplayer)
     - [Forward and reverse](#forward-and-reverse)
     - [Pause resume and reset](#pause-resume-and-reset)
@@ -126,13 +127,14 @@ global using Reactor.Motion;
 
 | Type | Role |
 |---|---|
-| `Motion` | Recipe, plus static `Define`, `Bind`, `Play`, `ForwardAsync`, and `ReverseAsync`. |
+| `Motion` | Recipe, plus static `Define`, `Bind`, `Play`, `ForwardAsync`, `ReverseAsync`, `Drag`, and `Collection`. |
 | `MotionPlayer` | Playback. |
 | `MotionPlaybackEventArgs` | Player events. State is `IsDismissed()`, `IsForward()`, `IsReverse()`, `IsPaused()`, and `IsCompleted()`. |
 | `Spring`, `Stagger`, `StaggerFrom`, `SlideFrom`, `ColorSpace`, `KeyframeBuilder<T>`, `Matrix4` | Recipe values. |
 | `MotionCurve` | `CubicBezier` easing. |
 | `MotionPreferences` | App-wide reduce-motion override. |
-| `VisualNodeExtensions` | `.BindMotion()`, `.EnterExit()`. |
+| `VisualNodeExtensions` | `.BindMotion()`, `.EnterExit()`, `.Drag()`. |
+| `CollectionExtensions` | `.Collection()` on a keyed collection. |
 | `MotionPlayerExtensions` | Null-safe `Forward` and `Reverse` on `MotionPlayer?`. |
 
 The snippets below assume that using, plus `MauiReactor`.
@@ -482,6 +484,36 @@ exit: m => m.FadeOut().SlideOut(SlideFrom.Bottom, 16).WithPose()
 ```
 
 An infinite `Repeat` on the exit never finishes, so the child never unmounts. Give each `EnterExit` its own key when one parent renders more than one. The wrapper is a `Grid` and uses the same target walk as `BindMotion`.
+
+### Collection
+
+`Collection` is that presence for many items. Pass the items, a stable key, and the item. Items that stay slide from their last position. A new item plays enter. A removed item plays exit where it was and leaves the flow, so the others close the gap while it is still on screen. The first layout records positions and does not play.
+
+```csharp
+Motion.Collection(
+    State.Items,
+    item => item.Id,
+    item => Row(item),
+    move: m => m.WithDuration(280),
+    enter: m => m.FadeIn().SlideIn(SlideFrom.Top, 16).WithDuration(280),
+    exit: m => m.FadeOut().WithDuration(200),
+    spacing: 8)
+```
+
+`items.Collection(...)` is the same call. `orientation: StackOrientation.Horizontal` lays the items across. The default is vertical.
+
+| Member | Role |
+|---|---|
+| `Motion.Collection(IEnumerable<T> items, Func<T, object> key, Func<T, VisualNode> item, Func<Motion, Motion>? move = null, Func<Motion, Motion>? enter = null, Func<Motion, Motion>? exit = null, double spacing = 0, StackOrientation orientation = StackOrientation.Vertical)` | Stack of items. `move`, `enter`, and `exit` each receive an empty motion. |
+| `IEnumerable<T>.Collection(...)` | Same arguments, starting with the key. |
+
+`key` is compared with `Equals`. It must not be null. When two items share a key, the first one is kept.
+
+`move` supplies the slide's duration, easing, spring, delay, rate, and reduce-motion. Tracks on it are ignored. Omit it and the slide is 300 ms and `CubicOut`. Omit `enter` and a new item fades in with that timing. Omit `exit` and a removed item fades out with that timing. An exit that never finishes never leaves the collection.
+
+The slide translates the item wrapper. Enter and exit use the same target walk as `BindMotion`, so a fade or a slide on the item does not take the wrapper's translation. `spacing` is the gap between items, in device-independent pixels.
+
+An item that comes back while its exit is still playing slides from the frame it left. The view is a fresh one, so the exit's halfway fade does not carry over.
 
 ### MotionPlayer
 
@@ -974,7 +1006,7 @@ A posed replacement still receives the spring speed of the properties it takes. 
 
 ## Samples
 
-`samples/Sample` is a MauiReactor gallery. Home lists the playground, stagger, scrub, color spaces, timeline seek, path (Bézier + arc), matrix (turn and tilt), enter / exit, poses, and drag. On the poses page, Play springs two cards toward an outline. Halfway, Pose comes back from the live position and keeps the spring speed. Snap jumps onto the outline, then comes back. On the drag page, one card follows the finger along a lane and springs to the nearer end. Another moves across a board and springs to the nearest corner. Both keep the speed of the flick.
+`samples/Sample` is a MauiReactor gallery. Home lists the playground, stagger, scrub, color spaces, timeline seek, path (Bézier + arc), matrix (turn and tilt), enter / exit, poses, drag, and collection. On the poses page, Play springs two cards toward an outline. Halfway, Pose comes back from the live position and keeps the spring speed. Snap jumps onto the outline, then comes back. On the drag page, one card follows the finger along a lane and springs to the nearer end. Another moves across a board and springs to the nearest corner. Both keep the speed of the flick. On the collection page, adding, removing, or moving an item slides the items that stay. A removed item fades where it left. Horizontal lays the same items across.
 
 ## Building
 

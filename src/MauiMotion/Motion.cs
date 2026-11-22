@@ -1,3 +1,4 @@
+using MauiReactor;
 using Microsoft.Maui.Controls.Shapes;
 
 namespace Reactor.Motion;
@@ -972,6 +973,39 @@ public sealed class Motion
         ArgumentNullException.ThrowIfNull(plane);
         return new Drag(target, spring, plane(new DragPlane()), manual: false);
     }
+
+    /// <summary>
+    /// Shows <paramref name="items"/> in a stack. An item that stays slides
+    /// from its last position. An item that appears plays <paramref name="enter"/>.
+    /// An item that leaves plays <paramref name="exit"/> where it was and stays
+    /// until that run finishes, while the others close the gap.
+    /// The first layout records positions and does not play.
+    /// </summary>
+    /// <remarks>
+    /// <paramref name="key"/> is compared with <see cref="object.Equals(object?)"/>.
+    /// It must not be null. When two items share a key, the first one is kept.
+    /// <paramref name="move"/> supplies the slide's duration, easing, spring, delay,
+    /// rate, and reduce-motion. Tracks on it are ignored. Omit it for a 300 ms
+    /// <c>CubicOut</c> slide. Omit <paramref name="enter"/> for a fade in, or
+    /// <paramref name="exit"/> for a fade out, using that same timing.
+    /// An exit that never finishes never leaves the collection.
+    /// An item that returns during its exit slides from the frame it left, on a fresh view.
+    /// The slide translates the item wrapper. Enter and exit use the same target
+    /// walk as <c>BindMotion</c>. <paramref name="spacing"/> is the gap between
+    /// items, in device-independent pixels.
+    /// <paramref name="orientation"/> stacks items down or across. The default is vertical.
+    /// <c>items.Collection(...)</c> is the same call.
+    /// </remarks>
+    public static VisualNode Collection<T>(
+        IEnumerable<T> items,
+        Func<T, object> key,
+        Func<T, VisualNode> item,
+        Func<Motion, Motion>? move = null,
+        Func<Motion, Motion>? enter = null,
+        Func<Motion, Motion>? exit = null,
+        double spacing = 0,
+        StackOrientation orientation = StackOrientation.Vertical)
+        => FlipEntries.Create(items, key, item, move, enter, exit, spacing, orientation);
 
     /// <summary>Same as <see cref="Drag(VisualElement, Spring, Func{DragPlane, DragPlane})"/> with manual clocks for tests.</summary>
     internal static Drag Drag(VisualElement target, Spring spring, Func<DragPlane, DragPlane> plane, bool manual)
