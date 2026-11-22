@@ -48,6 +48,7 @@ In-page view motion for [MauiReactor](https://github.com/adospace/reactorui-maui
   - [Keyframes](#keyframes)
   - [Timeline](#timeline)
   - [Springs](#springs)
+  - [Poses](#poses)
   - [Path](#path)
   - [One player per view](#one-player-per-view)
 - [Samples](#samples)
@@ -473,10 +474,10 @@ Keep rendering `EnterExit` on every pass. If the parent omits the node, MauiReac
 
 The exit run is one forward play. When it finishes and `present` is still false, the child leaves the tree. If `present` becomes true during that exit, the exit reverses back to its from pose and the child stays. A later hide plays the same exit forward from where it stopped.
 
-A from/to exit writes its from value when it starts. `FadeOut` is opacity 1 to 0, so hiding in the middle of an enter jumps to fully visible, then leaves. A to-only exit captures the live value, so it can leave from the middle of the enter:
+`WithPose` on the exit reads each property's from-value from the view and keeps the exit's `to`, so a hide in the middle of an enter leaves from the current opacity and translation. A spring that is still moving hands its velocity to that exit. See [Poses](#poses).
 
 ```csharp
-exit: m => m.Opacity(0).TranslateY(16)
+exit: m => m.FadeOut().SlideOut(SlideFrom.Bottom, 16).WithPose()
 ```
 
 An infinite `Repeat` on the exit never finishes, so the child never unmounts. Give each `EnterExit` its own key when one parent renders more than one. The wrapper is a `Grid` and uses the same target walk as `BindMotion`.
@@ -847,9 +848,20 @@ m.Opacity(0, 1).Settle(Spring.Snappy).TranslateX(0, 40).WithDuration(280)
 
 `WithSpring` is mutually exclusive with `WithDuration`, `Stagger`, and `Settle`. A debug build asserts if you combine them. `Settle` keeps the duration clock for every track that does not have a spring. The run finishes when those tracks are done and every spring has started and settled. A recipe whose tracks are all springs finishes when they settle, without waiting out the rest of the duration. A spring starts when its window opens, so stagger still delays it.
 
-The integrator is semi-implicit Euler. The step is clamped to 1/30 of a second. `Progress` for `WithSpring` is the spring position clamped to 0–1. The spring settles when position and velocity are both within `0.002` of rest, or after 8 seconds, whichever comes first. A settled forward pass then honors `Repeat` and `Yoyo`. Seek and a finished run leave velocity at 0.
+The integrator is semi-implicit Euler. The step is clamped to 1/30 of a second. `Progress` for `WithSpring` is the spring position clamped to 0–1. The property follows the spring position and can pass the from or to value while the spring is still moving. The spring settles when position and velocity are both within `0.002` of rest, or after 8 seconds, whichever comes first. A settled forward pass then honors `Repeat` and `Yoyo`. Seek and a finished run leave velocity at 0.
 
 `And` keeps the right-hand spring when the right-hand motion has one.
+
+### Poses
+
+`WithPose` retargets every new forward. Each property track reads its from-value from the view and keeps the recipe's `to`. An in-flight spring on that view hands its velocity to the new run, so the property keeps moving the way it was. A whole-recipe spring carries the first handed property. `Settle` carries each property on its own. Seek and a finished run leave velocity at 0, and that rest does not replace the new recipe's own kick. Keyframes, paths, and matrix transforms keep their authored start.
+
+```csharp
+m.Opacity(1, 0).WithPose()
+m.FadeOut().WithSpring(Spring.Snappy).WithPose()
+```
+
+`And` turns the pose on when either side has one.
 
 ### Path
 
@@ -918,7 +930,7 @@ The table is per view, not per property. A stagger player that targets twelve ti
 
 ## Samples
 
-`samples/Sample` is a MauiReactor gallery. Home lists the playground, stagger, scrub, color spaces, timeline seek, path (Bézier + arc), and matrix (turn and tilt).
+`samples/Sample` is a MauiReactor gallery. Home lists the playground, stagger, scrub, color spaces, timeline seek, path (Bézier + arc), matrix (turn and tilt), enter / exit, and poses. On the poses page, Play springs two cards toward an outline. Halfway, Pose comes back from the live position and keeps the spring speed. Snap jumps onto the outline, then comes back.
 
 ## Building
 

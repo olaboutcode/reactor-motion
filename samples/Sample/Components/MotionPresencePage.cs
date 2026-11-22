@@ -20,7 +20,7 @@ sealed class MotionPresencePage : Component<MotionPresencePageState>
                     Label("Enter / exit")
                         .FontSize(28)
                         .HCenter(),
-                    Label("Hide keeps the card until the exit finishes.")
+                    Label("Hide leaves from the current pose and waits until the exit finishes.")
                         .FontSize(14)
                         .HCenter()
                         .TextColor(Colors.Gray),
@@ -30,7 +30,7 @@ sealed class MotionPresencePage : Component<MotionPresencePageState>
                                 .EnterExit(
                                     State.Present,
                                     enter: m => m.FadeIn().SlideIn(SlideFrom.Bottom, 28).WithDuration(900),
-                                    exit: m => m.FadeOut().SlideOut(SlideFrom.Bottom, 20).WithDuration(700))
+                                    exit: m => m.FadeOut().SlideOut(SlideFrom.Bottom, 20).WithDuration(700).WithPose())
                                 .GridRow(1)
                         )
                     ),

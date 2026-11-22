@@ -25,8 +25,10 @@ internal static class MotionPlayers
         if (stolen is null)
             return;
 
+        var speeds = stolen.SampleSpeeds();
         System.Diagnostics.Debug.WriteLine("MotionPlayers: replacing player on view.");
         stolen.Dispose();
+        player.AcceptHandoff(speeds);
     }
 
     public static void Unregister(VisualElement view, MotionPlayer player)

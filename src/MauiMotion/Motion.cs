@@ -45,6 +45,7 @@ public sealed class Motion
     readonly bool _timeline;
     readonly bool _durationSet;
     readonly bool _easingSet;
+    readonly bool _pose;
     readonly IReadOnlyList<TimelineBeat> _beats;
 
     Motion(
@@ -65,7 +66,8 @@ public sealed class Motion
         IReadOnlyList<TimelineBeat>? beats = null,
         double rate = 1,
         double springVelocity = 0,
-        bool? reduceMotion = null)
+        bool? reduceMotion = null,
+        bool pose = false)
     {
         Duration = duration;
         Easing = easing;
@@ -85,6 +87,7 @@ public sealed class Motion
         Rate = rate;
         SpringVelocity = springVelocity;
         ReduceMotion = reduceMotion;
+        _pose = pose;
     }
 
     /// <summary>
@@ -136,6 +139,11 @@ public sealed class Motion
     /// When null, the player reads <see cref="MotionPreferences.ReduceMotion"/>.
     /// </summary>
     public bool? ReduceMotion { get; }
+
+    /// <summary>
+    /// When true, each new forward reads property from-values from the view.
+    /// </summary>
+    internal bool Pose => _pose;
 
     /// <summary>
     /// Flutter <c>Matrix4.setEntry(3, 2, entry)</c>. Null leaves the platform
@@ -218,6 +226,15 @@ public sealed class Motion
             System.Diagnostics.Debug.Assert(false, "WithSpring replaces Settle. A recipe uses one or the other.");
         return Copy(spring: spring, setSpring: true, springVelocity: SanitizeVelocity(velocity));
     }
+
+    /// <summary>
+    /// On each new forward, property tracks take their from-value from the view
+    /// and keep the recipe <c>to</c>. An in-flight spring on that view hands its
+    /// velocity to this run. Seek and a finished run still leave velocity at 0.
+    /// Keyframes, paths, and matrix transforms keep their authored start.
+    /// </summary>
+    public Motion WithPose()
+        => Copy(pose: true);
 
     /// <summary>
     /// Springs each track added so far. Tracks added after this call stay on the duration clock.
@@ -832,7 +849,8 @@ public sealed class Motion
             easingSet: _easingSet || other._easingSet,
             rate: other.Rate != 1 ? other.Rate : Rate,
             springVelocity: other._spring is not null ? other.SpringVelocity : SpringVelocity,
-            reduceMotion: other.ReduceMotion ?? ReduceMotion);
+            reduceMotion: other.ReduceMotion ?? ReduceMotion,
+            pose: _pose || other._pose);
     }
 
     /// <summary>
@@ -1088,7 +1106,8 @@ public sealed class Motion
         double? rate = null,
         double? springVelocity = null,
         bool? reduceMotion = null,
-        bool setReduceMotion = false)
+        bool setReduceMotion = false,
+        bool? pose = null)
         => new(
             duration ?? Duration,
             easing ?? Easing,
@@ -1107,7 +1126,8 @@ public sealed class Motion
             beats ?? _beats,
             rate ?? Rate,
             springVelocity ?? (setSpring ? 0 : SpringVelocity),
-            setReduceMotion ? reduceMotion : ReduceMotion);
+            setReduceMotion ? reduceMotion : ReduceMotion,
+            pose ?? _pose);
 
     static double SanitizeVelocity(double velocity)
         => double.IsNaN(velocity) || double.IsInfinity(velocity) ? 0 : velocity;

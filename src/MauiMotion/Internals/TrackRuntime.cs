@@ -47,6 +47,7 @@ internal sealed class TrackRuntime
     bool _springLive;
     bool _springStarted;
     bool _springSettled;
+    double? _poseKick;
 
     public TrackRuntime(
         VisualElement target,
@@ -105,8 +106,10 @@ internal sealed class TrackRuntime
         if (_trackSpring is null)
             return;
 
+        var velocity = _poseKick ?? _trackSpringVelocity;
+        _poseKick = null;
         _springX = direction > 0 ? 0 : 1;
-        _springV = direction * _trackSpringVelocity;
+        _springV = direction * velocity;
         _springElapsed = 0;
         _springSettled = false;
         _springStarted = false;
@@ -150,7 +153,7 @@ internal sealed class TrackRuntime
         return _springSettled;
     }
 
-    public void CaptureAndWriteFrom()
+    public void CaptureAndWriteFrom(bool retarget)
     {
         ForgetLastWrite();
         if (!TryTarget(out var view))
@@ -171,11 +174,63 @@ internal sealed class TrackRuntime
             return;
         }
 
-        if (_implicitFrom)
+        if (_property is not null && (_implicitFrom || (retarget && _keyframes is null)))
             _from = view.GetValue(_property);
 
         if (_from is not null && !SkipPinned(view))
             Commit(view, _from);
+    }
+
+    /// <summary>Records this track's value speed from a shared or per-track spring.</summary>
+    public void AddSpeed(List<PoseSpeed> speeds, double progressVelocity)
+    {
+        if (_property is null || _from is null || _keyframes is not null)
+            return;
+        if (!PoseMath.TryDelta(_from, _to, out var delta))
+            return;
+
+        var speed = delta * progressVelocity;
+        if (double.IsNaN(speed) || double.IsInfinity(speed))
+            speed = 0;
+        speeds.Add(new PoseSpeed(_target, _property, speed));
+    }
+
+    /// <summary>Records a live per-track spring. A settled or unstarted spring is skipped.</summary>
+    public void AddTrackSpeed(List<PoseSpeed> speeds)
+    {
+        if (_trackSpring is null || !_springLive)
+            return;
+        AddSpeed(speeds, _springV);
+    }
+
+    public bool TryPoseProgress(List<PoseSpeed> speeds, out double velocity)
+    {
+        velocity = 0;
+        if (!TryMatch(speeds, out var valueSpeed))
+            return false;
+        velocity = PoseMath.ProgressVelocity(_from, _to, valueSpeed);
+        return true;
+    }
+
+    public void AdoptPoseKick(List<PoseSpeed> speeds)
+    {
+        if (TryPoseProgress(speeds, out var velocity) && velocity != 0)
+            _poseKick = velocity;
+    }
+
+    bool TryMatch(List<PoseSpeed> speeds, out double valueSpeed)
+    {
+        for (var i = 0; i < speeds.Count; i++)
+        {
+            var speed = speeds[i];
+            if (!ReferenceEquals(speed.View, _target) || !ReferenceEquals(speed.Property, _property))
+                continue;
+            valueSpeed = speed.ValuePerSecond;
+            return true;
+        }
+
+        valueSpeed = 0;
+        return false;
     }
 
     public void WriteFrom()
@@ -292,6 +347,39 @@ internal sealed class TrackRuntime
         _ = entry;
         return false;
 #endif
+    }
+
+    /// <summary>
+    /// Writes a whole-recipe spring position. <paramref name="x"/> is not clamped,
+    /// so a handed-off velocity can carry the property past the from value.
+    /// </summary>
+    public void WriteSpringProgress(double x)
+    {
+        if (!TryTarget(out var view) || SkipPinned(view))
+            return;
+
+        if (_transform is not null)
+        {
+            MatrixPlane.Apply(view, _transform(Math.Clamp(x, 0, 1)) ?? Matrix4.Identity);
+            return;
+        }
+
+        if (_path is not null)
+        {
+            var t = _pathFrom + ((_pathTo - _pathFrom) * x);
+            WritePoint(view, _path.PointAt(t), Heading(t));
+            return;
+        }
+
+        _from ??= view.GetValue(_property);
+        if (_from is null)
+            return;
+
+        PrepareColors();
+        var value = _colorLerp.LerpOrNull(x)
+            ?? PropertyLerp.Lerp(_from, _to, x, _colorSpace)
+            ?? _to;
+        WriteValue(view, value);
     }
 
     void WriteSpringFrame()

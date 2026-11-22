@@ -29,6 +29,8 @@ public sealed class MotionPlayer : IDisposable
     double _springElapsedMs;
     bool _hasTimedTracks;
     bool _hasTrackSprings;
+    double? _poseKick;
+    List<PoseSpeed>? _handoff;
 
     internal MotionPlayer(Motion motion, IReadOnlyList<VisualElement> targets, MotionClock? clock = null)
     {
@@ -355,6 +357,60 @@ public sealed class MotionPlayer : IDisposable
     }
 
     /// <summary>
+    /// Spring speeds still on this player, in property units per second.
+    /// A dismissed or completed whole-recipe spring contributes nothing, so a
+    /// replacement keeps its own authored kick.
+    /// </summary>
+    internal List<PoseSpeed> SampleSpeeds()
+    {
+        var speeds = new List<PoseSpeed>();
+        if (Motion.Spring is not null)
+        {
+            if (Status is MotionPlaybackStatus.Dismissed or MotionPlaybackStatus.Completed)
+                return speeds;
+            foreach (var runtime in _runtimes)
+                runtime.AddSpeed(speeds, _v);
+            return speeds;
+        }
+
+        foreach (var runtime in _runtimes)
+            runtime.AddTrackSpeed(speeds);
+        return speeds;
+    }
+
+    internal void AcceptHandoff(List<PoseSpeed> speeds)
+    {
+        if (!Motion.Pose || speeds.Count == 0)
+            return;
+        _handoff ??= [];
+        _handoff.AddRange(speeds);
+    }
+
+    void ApplyPoseHandoff()
+    {
+        var handoff = _handoff;
+        if (handoff is null || handoff.Count == 0)
+            return;
+        _handoff = null;
+
+        if (Motion.Spring is not null)
+        {
+            foreach (var runtime in _runtimes)
+            {
+                if (!runtime.TryPoseProgress(handoff, out var velocity) || velocity == 0)
+                    continue;
+                _poseKick = velocity;
+                return;
+            }
+
+            return;
+        }
+
+        foreach (var runtime in _runtimes)
+            runtime.AdoptPoseKick(handoff);
+    }
+
+    /// <summary>
     /// Stops the clock, cancels the pending task, and unregisters this player from its views.
     /// </summary>
     public void Dispose()
@@ -389,7 +445,8 @@ public sealed class MotionPlayer : IDisposable
         if (recapture)
         {
             foreach (var runtime in _runtimes)
-                runtime.CaptureAndWriteFrom();
+                runtime.CaptureAndWriteFrom(Motion.Pose);
+            ApplyPoseHandoff();
             _captured = true;
             _elapsedMs = 0;
             _repeatRemaining = Motion.RepeatCount < 0 ? -1 : Math.Max(1, Motion.RepeatCount);
@@ -602,7 +659,8 @@ public sealed class MotionPlayer : IDisposable
     {
         var target = _direction > 0 ? 1d : 0d;
         SpringStep.Integrate(spring, deltaMs, target, ref _x, ref _v, ref _springElapsedMs, out var settled);
-        Apply(PlaybackU);
+        foreach (var runtime in _runtimes)
+            runtime.WriteSpringProgress(_x);
         ReportProgress();
         if (!settled)
             return;
@@ -615,8 +673,11 @@ public sealed class MotionPlayer : IDisposable
 
     void ResetSpring(double x, bool kick = false)
     {
+        var velocity = _poseKick ?? Motion.SpringVelocity;
+        if (kick)
+            _poseKick = null;
         _x = x;
-        _v = kick && Motion.Spring is not null ? _direction * Motion.SpringVelocity : 0;
+        _v = kick && Motion.Spring is not null ? _direction * velocity : 0;
         _springElapsedMs = 0;
     }
 
