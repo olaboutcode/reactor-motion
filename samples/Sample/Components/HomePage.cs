@@ -19,7 +19,7 @@ sealed class HomePage : Component
                     Label("Reactor.Motion")
                         .FontSize(22)
                         .TextColor(ink),
-                    Label("Playground, stagger, scrub, color, timeline, path, and matrix.")
+                    Label("Playground, stagger, scrub, color, timeline, path, matrix, and enter / exit.")
                         .FontSize(16)
                         .TextColor(Muted)
                         .Margin(0, 8, 0, 0),
@@ -45,6 +45,7 @@ sealed class HomePage : Component
         Row("Timeline seek", () => PageNavigation.Push<MotionTimelinePage>(), ink),
         Row("Path", () => PageNavigation.Push<MotionPathPage>(), ink),
         Row("Matrix", () => PageNavigation.Push<MotionTransformPage>(), ink),
+        Row("Enter / exit", () => PageNavigation.Push<MotionPresencePage>(), ink),
     ];
 
     static MauiReactor.Grid Row(string title, Action open, Color ink)

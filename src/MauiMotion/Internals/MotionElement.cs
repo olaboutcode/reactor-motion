@@ -36,7 +36,7 @@ internal class MotionElement(MotionRecipe motion, Action<MotionPlayer>? onBind) 
         _player = null;
     }
 
-    static VisualElement? ResolveTarget(VisualElement? root)
+    internal static VisualElement? ResolveTarget(VisualElement? root)
     {
         var current = root;
         while (current is Layout layout)

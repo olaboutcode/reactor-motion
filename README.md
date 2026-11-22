@@ -3,7 +3,7 @@
 [![CI](https://github.com/olaboutcode/reactor-motion/actions/workflows/ci.yml/badge.svg)](https://github.com/olaboutcode/reactor-motion/actions/workflows/ci.yml)
 [![NuGet](https://img.shields.io/nuget/vpre/Reactor.Motion.svg)](https://www.nuget.org/packages/Reactor.Motion/)
 
-In-page view motion for [MauiReactor](https://github.com/adospace/reactorui-maui). A recipe can fade, slide, scale, stagger, follow keyframes or a timeline, spring, walk a path, or write a matrix.
+In-page view motion for [MauiReactor](https://github.com/adospace/reactorui-maui). A recipe can fade, slide, scale, stagger, follow keyframes or a timeline, spring, walk a path, write a matrix, or enter and exit while the view stays until the exit finishes.
 
 > [!WARNING]
 > The library is still experimental, use at your own risk. The performance seems decent and all the features should be working as expected. However, expect breaking changes as I work on the API.
@@ -34,6 +34,7 @@ In-page view motion for [MauiReactor](https://github.com/adospace/reactorui-maui
   - [Color space](#color-space)
   - [Bind and play](#bind-and-play)
   - [BindMotion](#bindmotion)
+  - [Enter and exit](#enter-and-exit)
   - [MotionPlayer](#motionplayer)
     - [Forward and reverse](#forward-and-reverse)
     - [Pause resume and reset](#pause-resume-and-reset)
@@ -129,7 +130,7 @@ global using Reactor.Motion;
 | `Spring`, `Stagger`, `StaggerFrom`, `SlideFrom`, `ColorSpace`, `KeyframeBuilder<T>`, `Matrix4` | Recipe values. |
 | `MotionCurve` | `CubicBezier` easing. |
 | `MotionPreferences` | App-wide reduce-motion override. |
-| `VisualNodeExtensions` | `.BindMotion()`. |
+| `VisualNodeExtensions` | `.BindMotion()`, `.EnterExit()`. |
 | `MotionPlayerExtensions` | Null-safe `Forward` and `Reverse` on `MotionPlayer?`. |
 
 The snippets below assume that using, plus `MauiReactor`.
@@ -450,6 +451,35 @@ Button("Pulse")
 ```
 
 Dispose is automatic when the node unloads. If you also hold the player, drop your field in `OnWillUnmount` so you do not call a disposed player later. The null-safe extensions make that call a no-op. See below.
+
+### Enter and exit
+
+`BindMotion` never plays, and it disposes the player when the node unloads. A child the parent stops rendering is already gone before an exit can run. `EnterExit` is the presence wrapper: the parent keeps rendering it and passes `present`.
+
+```csharp
+Banner()
+    .EnterExit(
+        State.Show,
+        enter: m => m.FadeIn().SlideIn(SlideFrom.Bottom, 24).WithDuration(420),
+        exit: m => m.FadeOut().SlideOut(SlideFrom.Bottom, 16).WithDuration(320))
+```
+
+| Member | Role |
+|---|---|
+| `VisualNode.EnterExit(bool present, Motion enter, Motion exit)` | Plays `enter` when the child appears, including the first time `present` is true. Plays `exit` when `present` becomes false and keeps the child until that run finishes. |
+| `VisualNode.EnterExit(bool present, Func<Motion, Motion> enter, Func<Motion, Motion> exit)` | Same. Each function receives an empty motion. |
+
+Keep rendering `EnterExit` on every pass. If the parent omits the node, MauiReactor unmounts it immediately and the exit does not run.
+
+The exit run is one forward play. When it finishes and `present` is still false, the child leaves the tree. If `present` becomes true during that exit, the exit reverses back to its from pose and the child stays. A later hide plays the same exit forward from where it stopped.
+
+A from/to exit writes its from value when it starts. `FadeOut` is opacity 1 to 0, so hiding in the middle of an enter jumps to fully visible, then leaves. A to-only exit captures the live value, so it can leave from the middle of the enter:
+
+```csharp
+exit: m => m.Opacity(0).TranslateY(16)
+```
+
+An infinite `Repeat` on the exit never finishes, so the child never unmounts. Give each `EnterExit` its own key when one parent renders more than one. The wrapper is a `Grid` and uses the same target walk as `BindMotion`.
 
 ### MotionPlayer
 
