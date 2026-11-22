@@ -126,14 +126,6 @@ public sealed class MotionEngineGapTests
     }
 
     [Fact]
-    public void Named_durations_are_fast_normal_and_slow()
-    {
-        Assert.Equal(160u, MotionTime.Fast);
-        Assert.Equal(280u, MotionTime.Normal);
-        Assert.Equal(400u, MotionTime.Slow);
-    }
-
-    [Fact]
     public void Anchor_midpoint_is_halfway()
     {
         var box = new BoxView();

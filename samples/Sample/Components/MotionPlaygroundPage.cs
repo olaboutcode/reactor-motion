@@ -10,13 +10,19 @@ sealed class MotionPlaygroundPage : Component<MotionPlaygroundPageState>
     static readonly RecipeSpec[] Recipes =
     [
         new("Fade in", box => box.Opacity = 0, m => m.FadeIn()),
+        new("Double time", box => box.Opacity = 0, m => m.FadeIn().WithRate(2)),
+        new("Reduce motion", box => { box.Opacity = 0; box.TranslationX = -48; }, m => m.FadeIn().SlideIn(SlideFrom.Left, 48).WithReduceMotion(true)),
         new("Fade out", box => box.Opacity = 1, m => m.FadeOut()),
         new("Slide in", box => { box.Opacity = 0; box.TranslationX = -40; }, m => m.FadeIn().SlideIn(SlideFrom.Left, 40)),
         new("Scale in", box => { box.Opacity = 0; box.ScaleX = 0.85; box.ScaleY = 0.85; }, m => m.FadeIn().ScaleIn()),
         new("Pulse", box => { box.ScaleX = 1; box.ScaleY = 1; }, m => m.Scale(1, 1.12)),
         new("Spring pop", box => { box.ScaleX = 1; box.ScaleY = 1; }, m => m.Scale(1, 1.16).WithSpring(Spring.Snappy), Timed: false),
+        new("Spring kick", box => box.TranslationX = 0, m => m.TranslateX(0, 72).WithSpring(Spring.Snappy, velocity: 8), Timed: false),
+        new("Settle slide", box => { box.Opacity = 0; box.TranslationX = -80; }, m => m.Opacity(0, 1).Settle(Spring.Snappy).TranslateX(-80, 0)),
+        new("Overshoot", box => box.TranslationY = 48, m => m.TranslateY(48, 0).WithDuration(1400).WithEasing(MotionCurve.CubicBezier(0.34, 1.56, 0.64, 1)), Timed: false),
         new("Pulse yoyo", box => { box.ScaleX = 1; box.ScaleY = 1; }, m => m.Scale(1, 1.12).Yoyo().Repeat(-1)),
         new("Spin", box => box.Rotation = 0, m => m.Rotate(0, 180)),
+        new("Pivot", box => { box.Rotation = 0; box.AnchorX = 0.5; box.AnchorY = 1; }, m => m.Rotate(0, 70).AnchorX(0.5, 0).AnchorY(1, 0)),
         new("Turn", box => { box.RotationX = 0; box.RotationY = 0; }, m => m.Perspective(0.004).RotateY(0, 60)),
         new("Bounce", box => { box.Opacity = 0; box.ScaleX = 0.8; box.ScaleY = 0.8; }, m => m
             .Opacity(k => k.At(0, 0).At(0.35, 1).At(1, 1))
@@ -29,8 +35,8 @@ sealed class MotionPlaygroundPage : Component<MotionPlaygroundPageState>
         new("Intro", box => { box.Opacity = 0; box.TranslationX = -40; box.ScaleX = 1; box.ScaleY = 1; }, m => m
             .FadeIn()
             .SlideIn(SlideFrom.Left, 40)
-            .WithDuration(280)
-            .Then(Motion.None.Scale(1, 1.1).WithDuration(180))),
+            .WithDuration(560)
+            .Then(Motion.None.Scale(1, 1.1).WithDuration(360))),
     ];
 
     MauiControls.BoxView? _box;
@@ -111,7 +117,7 @@ sealed class MotionPlaygroundPage : Component<MotionPlaygroundPageState>
         ApplyRest(recipe);
         var motion = Recipes[recipe].Build(Motion.None);
         if (Recipes[recipe].Timed)
-            motion = motion.WithDuration(600).WithEasing(Easing.CubicOut);
+            motion = motion.WithDuration(1200).WithEasing(Easing.CubicOut);
         _player = Motion.Bind(motion, _box);
     }
 
@@ -127,6 +133,8 @@ sealed class MotionPlaygroundPage : Component<MotionPlaygroundPageState>
         _box.Rotation = 0;
         _box.RotationX = 0;
         _box.RotationY = 0;
+        _box.AnchorX = 0.5;
+        _box.AnchorY = 0.5;
         Recipes[recipe].Rest(_box);
     }
 

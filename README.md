@@ -127,7 +127,6 @@ global using Reactor.Motion;
 | `MotionPlayer` | Playback. |
 | `MotionPlaybackEventArgs` | Player events. State is `IsDismissed()`, `IsForward()`, `IsReverse()`, `IsPaused()`, and `IsCompleted()`. |
 | `Spring`, `Stagger`, `StaggerFrom`, `SlideFrom`, `ColorSpace`, `KeyframeBuilder<T>`, `Matrix4` | Recipe values. |
-| `MotionTime` | Named durations: `Fast` 160, `Normal` 280, `Slow` 400. |
 | `MotionCurve` | `CubicBezier` easing. |
 | `MotionPreferences` | App-wide reduce-motion override. |
 | `VisualNodeExtensions` | `.BindMotion()`. |
@@ -331,13 +330,10 @@ m.WithDuration(280).WithEasing(Easing.CubicOut)
 | `WithEasing(Easing easing)` | Sets the easing. `null` throws. |
 | `WithRate(double rate)` | Multiplies every finite tick, including the delay hold. `1` is normal. `0` holds the current frame. A negative, NaN, or infinite value becomes `0`. |
 | `WithReduceMotion(bool enabled)` | Writes the end pose and completes once. Wins over `MotionPreferences.ReduceMotion`. |
-| `MotionTime.Fast`, `Normal`, `Slow` | 160, 280, and 400 milliseconds. |
 | `MotionCurve.CubicBezier(x1, y1, x2, y2)` | CSS cubic-bezier easing. X controls are clamped to 0–1. Y may leave that range. |
 
-`MotionTime` is a length you pass to `WithDuration`. The recipe still starts at 300 ms until you set one.
-
 ```csharp
-m.FadeIn().WithDuration(MotionTime.Normal).WithEasing(MotionCurve.CubicBezier(0.2, 0.8, 0.2, 1))
+m.FadeIn().WithDuration(280).WithEasing(MotionCurve.CubicBezier(0.2, 0.8, 0.2, 1))
 m.Opacity(0, 1).WithDuration(280).WithRate(1.5)
 m.FadeIn().WithReduceMotion(true)
 ```

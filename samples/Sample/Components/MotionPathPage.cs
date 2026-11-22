@@ -28,12 +28,12 @@ sealed class MotionPathPage : Component
                     Label("Path")
                         .FontSize(28)
                         .HCenter(),
-                    Label("Top: cubic Bézier. Bottom: clockwise arc.")
+                    Label("Top: cubic Bézier. Bottom: clockwise arc, turned along the tangent.")
                         .FontSize(14)
                         .HCenter()
                         .TextColor(Colors.Gray),
                     Lane("Bézier", b => _bezier = b, BindBezier, Colors.OrangeRed, 200),
-                    Lane("Arc", b => _arc = b, BindArc, Colors.CornflowerBlue, 160),
+                    Lane("Arc", b => _arc = b, BindArc, Colors.CornflowerBlue, 160, 44, 16, 4),
                     
                     HStack(
                         Button("Play", Play),
@@ -59,7 +59,10 @@ sealed class MotionPathPage : Component
         Action<MauiControls.BoxView?> capture,
         Action onLoaded,
         Color color,
-        double height)
+        double height,
+        double markerWidth = 36,
+        double markerHeight = 36,
+        double corner = 18)
         => VStack(
             Label(title)
                 .FontSize(14)
@@ -69,9 +72,9 @@ sealed class MotionPathPage : Component
                     .BackgroundColor(Colors.Transparent)
                     .HeightRequest(height),
                 BoxView(capture)
-                    .HeightRequest(36)
-                    .WidthRequest(36)
-                    .CornerRadius(18)
+                    .HeightRequest(markerHeight)
+                    .WidthRequest(markerWidth)
+                    .CornerRadius(corner)
                     .BackgroundColor(color)
                     .HStart()
                     .VCenter()
@@ -103,7 +106,7 @@ sealed class MotionPathPage : Component
         Reset(_arc);
         _arcPlayer = Motion.Bind(
             Motion.Define(m => m
-                .Path(Arc())
+                .Path(Arc(), orient: true)
                 .WithDuration(900)
                 .WithEasing(Easing.SinInOut)),
             _arc);
@@ -123,6 +126,7 @@ sealed class MotionPathPage : Component
             return;
         orb.TranslationX = 0;
         orb.TranslationY = 0;
+        orb.Rotation = 0;
     }
 
     static PathGeometry Bezier()
