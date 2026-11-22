@@ -963,7 +963,7 @@ public sealed class Motion
 
     /// <summary>
     /// Binds <paramref name="motion"/> to <paramref name="target"/> and plays it forward.
-    /// A later bind on the same view replaces this run. Cancellation does not throw.
+    /// A later bind that writes one of these properties replaces that part of this run. Cancellation does not throw.
     /// </summary>
     public static Task ForwardAsync(
         Motion motion,
@@ -973,7 +973,7 @@ public sealed class Motion
 
     /// <summary>
     /// Binds <paramref name="motion"/> to <paramref name="targets"/> and plays it forward.
-    /// A later bind on the same view replaces this run. Cancellation does not throw.
+    /// A later bind that writes one of these properties replaces that part of this run. Cancellation does not throw.
     /// </summary>
     public static Task ForwardAsync(
         Motion motion,
@@ -1003,7 +1003,7 @@ public sealed class Motion
 
     /// <summary>
     /// Binds <paramref name="motion"/> to <paramref name="target"/> and plays it in reverse.
-    /// A later bind on the same view replaces this run. Cancellation does not throw.
+    /// A later bind that writes one of these properties replaces that part of this run. Cancellation does not throw.
     /// </summary>
     public static Task ReverseAsync(
         Motion motion,
@@ -1013,7 +1013,7 @@ public sealed class Motion
 
     /// <summary>
     /// Binds <paramref name="motion"/> to <paramref name="targets"/> and plays it in reverse.
-    /// A later bind on the same view replaces this run. Cancellation does not throw.
+    /// A later bind that writes one of these properties replaces that part of this run. Cancellation does not throw.
     /// </summary>
     public static Task ReverseAsync(
         Motion motion,

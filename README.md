@@ -50,7 +50,7 @@ In-page view motion for [MauiReactor](https://github.com/adospace/reactorui-maui
   - [Springs](#springs)
   - [Poses](#poses)
   - [Path](#path)
-  - [One player per view](#one-player-per-view)
+  - [One player per property](#one-player-per-property)
 - [Samples](#samples)
 - [Building](#building)
 - [License](#license)
@@ -232,7 +232,7 @@ Call `Perspective` together with `RotateX` or `RotateY`. On iOS and Mac Catalyst
 
 On Windows, a recipe that sets `Perspective` writes one pose matrix to the composition visual. That matrix carries translation, rotation, scale, and the perspective entry, so those channels are not also written as bindable properties.
 
-A later recipe on the same view replaces the entry. `And` keeps the right-hand entry when the right-hand motion has one.
+A later player that takes translation, rotation, or scale replaces that pose. A player that writes opacity or color leaves it alone. `And` keeps the right-hand entry when the right-hand motion has one.
 
 #### Matrix
 
@@ -415,7 +415,7 @@ var player = Motion.None.FadeIn().WithDuration(280).Bind(view);
 _player = Motion.Play(m => m.Scale(1, 1.08).WithDuration(180), card);
 ```
 
-`ForwardAsync` and `ReverseAsync` also bind and start, and the only handle you get back is the `Task`. Use `Bind` or `Play` when you need the player. A later `Bind` or `Play` on that view disposes the player the one-shot call left behind. See [One player per view](#one-player-per-view).
+`ForwardAsync` and `ReverseAsync` also bind and start, and the only handle you get back is the `Task`. Use `Bind` or `Play` when you need the player. A later `Bind` or `Play` that writes a property this run writes takes that property. See [One player per property](#one-player-per-property).
 
 Those methods accept a `CancellationToken`. Cancellation does not throw out of these methods. See [Forward and reverse](#forward-and-reverse).
 
@@ -918,13 +918,15 @@ static PathGeometry Arc()
 }
 ```
 
-### One player per view
+### One player per property
 
-One live `MotionPlayer` owns a `VisualElement`. Binding a second player to that view disposes the first. The dispose happens after the new player is registered, and a debug build logs the steal.
+Each property of a view has one live player. A fade and a slide on the same view run together. A second player that writes a property the first one writes takes that property. The first player keeps every property the new recipe does not write. When the first player has nothing left, it is disposed. The dispose happens after the new player is registered, and a debug build logs the steal.
 
-The table is per view, not per property. A stagger player that targets twelve tiles owns all twelve. Binding a new player to any one of them disposes the whole stagger player.
+A path owns translation on both axes, and rotation when `orient` is set. A matrix transform owns translation, rotation, and scale. Taking any one of those releases the whole path or transform. Opacity, color, corner radius, and anchor keep their own player.
 
-`Dispose` unregisters only when this player is still the owner. Disposing a player that has already been replaced does not drop the replacement.
+A player that targets many views owns each view's properties on its own. A new player on one tile takes that tile's properties and leaves the other tiles on the first player.
+
+A posed replacement still receives the spring speed of the properties it takes. `Dispose` unregisters only the properties this player still owns. Disposing a player that has already given a property away does not drop the replacement.
 
 `Reset` and `Dispose` both cancel an in-flight `ForwardAsync`. Unload paths should dispose. The null-safe `Forward()` on a field you have already nulled out is a no-op.
 

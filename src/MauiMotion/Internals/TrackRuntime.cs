@@ -48,6 +48,19 @@ internal sealed class TrackRuntime
     bool _springStarted;
     bool _springSettled;
     double? _poseKick;
+    bool _released;
+
+    static readonly BindableProperty[] PlaneProperties =
+    [
+        VisualElement.TranslationXProperty,
+        VisualElement.TranslationYProperty,
+        VisualElement.ScaleProperty,
+        VisualElement.ScaleXProperty,
+        VisualElement.ScaleYProperty,
+        VisualElement.RotationProperty,
+        VisualElement.RotationXProperty,
+        VisualElement.RotationYProperty,
+    ];
 
     public TrackRuntime(
         VisualElement target,
@@ -88,6 +101,67 @@ internal sealed class TrackRuntime
         _implicitFrom = from is null;
     }
 
+    public bool IsReleased => _released;
+
+    /// <summary>
+    /// Properties this track writes on <paramref name="view"/>. A path owns both
+    /// translations, plus rotation when it is oriented. A matrix owns the plane.
+    /// </summary>
+    public void AddClaims(VisualElement view, HashSet<BindableProperty> claims)
+    {
+        if (_released || !ReferenceEquals(_target, view))
+            return;
+
+        if (_transform is not null)
+        {
+            AddPlane(claims);
+            return;
+        }
+
+        if (_path is not null)
+        {
+            claims.Add(VisualElement.TranslationXProperty);
+            claims.Add(VisualElement.TranslationYProperty);
+            if (_orient)
+                claims.Add(VisualElement.RotationProperty);
+            return;
+        }
+
+        claims.Add(_property);
+    }
+
+    public bool Hits(VisualElement view, HashSet<BindableProperty> properties)
+    {
+        if (_released || !ReferenceEquals(_target, view))
+            return false;
+
+        if (_transform is not null)
+            return PlaneHits(properties);
+
+        if (_path is not null)
+        {
+            return properties.Contains(VisualElement.TranslationXProperty)
+                || properties.Contains(VisualElement.TranslationYProperty)
+                || (_orient && properties.Contains(VisualElement.RotationProperty));
+        }
+
+        return properties.Contains(_property);
+    }
+
+    /// <summary>
+    /// Drops the track when any property it writes was taken. The rest of the
+    /// track stops too, so a path does not keep writing the axis it still held.
+    /// </summary>
+    public void ReleaseIf(VisualElement view, HashSet<BindableProperty> properties)
+    {
+        if (!Hits(view, properties))
+            return;
+
+        _released = true;
+        _springLive = false;
+        _springV = 0;
+    }
+
     public bool HasTrackSpring => _trackSpring is not null;
 
     public bool SpringLive => _springLive;
@@ -103,7 +177,7 @@ internal sealed class TrackRuntime
 
     public void KickTrackSpring(int direction)
     {
-        if (_trackSpring is null)
+        if (_released || _trackSpring is null)
             return;
 
         var velocity = _poseKick ?? _trackSpringVelocity;
@@ -143,7 +217,7 @@ internal sealed class TrackRuntime
     /// <summary>Integrates once. Returns true when this spring has settled.</summary>
     public bool StepTrackSpring(double deltaMs, int direction)
     {
-        if (_trackSpring is not { } spring || !_springLive || _springSettled)
+        if (_released || _trackSpring is not { } spring || !_springLive || _springSettled)
             return true;
 
         _springStarted = true;
@@ -155,6 +229,9 @@ internal sealed class TrackRuntime
 
     public void CaptureAndWriteFrom(bool retarget)
     {
+        if (_released)
+            return;
+
         ForgetLastWrite();
         if (!TryTarget(out var view))
             return;
@@ -184,7 +261,7 @@ internal sealed class TrackRuntime
     /// <summary>Records this track's value speed from a shared or per-track spring.</summary>
     public void AddSpeed(List<PoseSpeed> speeds, double progressVelocity)
     {
-        if (_property is null || _from is null || _keyframes is not null)
+        if (_released || _property is null || _from is null || _keyframes is not null)
             return;
         if (!PoseMath.TryDelta(_from, _to, out var delta))
             return;
@@ -235,7 +312,7 @@ internal sealed class TrackRuntime
 
     public void WriteFrom()
     {
-        if (!TryTarget(out var view) || SkipPinned(view))
+        if (_released || !TryTarget(out var view) || SkipPinned(view))
             return;
         if (_transform is not null)
         {
@@ -256,7 +333,7 @@ internal sealed class TrackRuntime
 
     public void Apply(double u)
     {
-        if (!TryTarget(out var view) || SkipPinned(view))
+        if (_released || !TryTarget(out var view) || SkipPinned(view))
             return;
         if (TrackSpringOwnsFrame(u))
             return;
@@ -355,7 +432,7 @@ internal sealed class TrackRuntime
     /// </summary>
     public void WriteSpringProgress(double x)
     {
-        if (!TryTarget(out var view) || SkipPinned(view))
+        if (_released || !TryTarget(out var view) || SkipPinned(view))
             return;
 
         if (_transform is not null)
@@ -384,7 +461,7 @@ internal sealed class TrackRuntime
 
     void WriteSpringFrame()
     {
-        if (!TryTarget(out var view) || SkipPinned(view))
+        if (_released || !TryTarget(out var view) || SkipPinned(view))
             return;
 
         if (_transform is not null)
@@ -538,15 +615,33 @@ internal sealed class TrackRuntime
 #endif
     }
 
+    static void AddPlane(HashSet<BindableProperty> claims)
+    {
+        foreach (var property in PlaneProperties)
+            claims.Add(property);
+    }
+
+    static bool PlaneHits(HashSet<BindableProperty> properties)
+    {
+        foreach (var property in PlaneProperties)
+        {
+            if (properties.Contains(property))
+                return true;
+        }
+
+        return false;
+    }
+
     static bool IsPoseChannel(BindableProperty property)
-        => property == VisualElement.TranslationXProperty
-           || property == VisualElement.TranslationYProperty
-           || property == VisualElement.ScaleProperty
-           || property == VisualElement.ScaleXProperty
-           || property == VisualElement.ScaleYProperty
-           || property == VisualElement.RotationProperty
-           || property == VisualElement.RotationXProperty
-           || property == VisualElement.RotationYProperty;
+    {
+        foreach (var plane in PlaneProperties)
+        {
+            if (property == plane)
+                return true;
+        }
+
+        return false;
+    }
 
     void ForgetLastWrite()
     {

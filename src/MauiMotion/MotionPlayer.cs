@@ -2,8 +2,8 @@
 namespace Reactor.Motion;
 
 /// <summary>
-/// Plays a <see cref="Motion"/> on one or more views. One player owns a view;
-/// binding another disposes this one.
+/// Plays a <see cref="Motion"/> on one or more views. One player owns each
+/// property it writes. A later player takes those properties and leaves the rest.
 /// </summary>
 public sealed class MotionPlayer : IDisposable
 {
@@ -47,6 +47,46 @@ public sealed class MotionPlayer : IDisposable
         NoteTracks();
         foreach (var target in _targets)
             MotionPlayers.Register(target, this);
+    }
+
+    internal void CollectClaims(VisualElement view, HashSet<BindableProperty> claims)
+    {
+        foreach (var runtime in _runtimes)
+            runtime.AddClaims(view, claims);
+    }
+
+    internal void CollectSideProperties(
+        VisualElement view,
+        HashSet<BindableProperty> stolen,
+        HashSet<BindableProperty> side)
+    {
+        foreach (var runtime in _runtimes)
+        {
+            if (!runtime.Hits(view, stolen))
+                continue;
+            runtime.AddClaims(view, side);
+        }
+
+        foreach (var property in stolen)
+            side.Remove(property);
+    }
+
+    /// <summary>
+    /// Stops tracks on <paramref name="view"/> that write any stolen property.
+    /// Returns true when this player has no tracks left.
+    /// </summary>
+    internal bool Release(VisualElement view, HashSet<BindableProperty> stolen)
+    {
+        foreach (var runtime in _runtimes)
+            runtime.ReleaseIf(view, stolen);
+
+        foreach (var runtime in _runtimes)
+        {
+            if (!runtime.IsReleased)
+                return false;
+        }
+
+        return true;
     }
 
     void NoteTracks()
@@ -369,12 +409,19 @@ public sealed class MotionPlayer : IDisposable
             if (Status is MotionPlaybackStatus.Dismissed or MotionPlaybackStatus.Completed)
                 return speeds;
             foreach (var runtime in _runtimes)
-                runtime.AddSpeed(speeds, _v);
+            {
+                if (!runtime.IsReleased)
+                    runtime.AddSpeed(speeds, _v);
+            }
+
             return speeds;
         }
 
         foreach (var runtime in _runtimes)
-            runtime.AddTrackSpeed(speeds);
+        {
+            if (!runtime.IsReleased)
+                runtime.AddTrackSpeed(speeds);
+        }
         return speeds;
     }
 
