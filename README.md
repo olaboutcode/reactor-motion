@@ -41,6 +41,7 @@ In-page view motion for [MauiReactor](https://github.com/adospace/reactorui-maui
     - [Status](#status)
     - [Player events](#player-events)
   - [Seek](#seek)
+  - [Drag](#drag)
   - [Repeat and yoyo](#repeat-and-yoyo)
   - [Parallel merge](#parallel-merge)
   - [Delay](#delay)
@@ -661,6 +662,47 @@ if (player.TrySpan("pulse", out var begin, out var end))
 }
 ```
 
+### Drag
+
+`Motion.Drag` binds one or two finger axes and waits, the same way `Motion.Bind` waits. `.X` follows the horizontal pan. `.Y` follows the vertical pan. Leave an axis out and that direction stays put. Each axis has its own player. On release that axis springs to the nearer end and keeps its own speed. The frame pump is the one `Play` already uses.
+
+The recipe is the from/to map. Give it a duration so a seek can stop between the ends. Pass the release spring to `Drag`. `WithSpring` on the recipe stays the playback spring and is still exclusive with duration.
+
+A single `TranslateX` or `TranslateY` with a from and a to uses `to - from` as the finger travel. `TranslateX(180, 0)` drags toward the left. Pass `travel` when the finger span and the property span differ, or when the recipe is not one translation.
+
+```csharp
+var drop = new Spring(28, 12, 1);
+var drag = Motion.Drag(card, drop, plane => plane
+    .X(m => m.TranslateX(0, 180).WithDuration(400).WithEasing(Easing.Linear))
+    .Y(m => m.TranslateY(0, 120).WithDuration(400).WithEasing(Easing.Linear)));
+
+drag.Seek(0.6, 0.4);                 // x = 108, y = 48, both players paused
+drag.Release(velocityX: 2, velocityY: -1);
+```
+
+| Member | Role |
+|---|---|
+| `Motion.Drag(target, spring, plane)` | Binds the axes. Does not install a pan and does not start the spring. |
+| `DragPlane.X` / `Y` | Finger axis. The callback receives an empty motion. |
+| `Seek(double? x, double? y)` | Parks the axes you pass. Null leaves an axis alone. `NaN` seeks to 0. |
+| `Release(velocityX, velocityY)` | `SpringToNearest` on each bound axis. |
+| `X` / `Y` | The player for that finger axis, or null. |
+| `Dispose()` | Stops both players. A later `Release` throws. |
+
+`SpringToNearest` reads `Progress`, then aims at 1 when that value is at or above 0.5, and at 0 otherwise. Velocity is progress units per second on that axis. Positive velocity moves toward 1. The nearer end is that position. A flick toward the far end still aims at the nearer one, and the first frames can keep moving the other way. `NaN` and infinities count as 0. Delay, repeat, and yoyo on the recipe do not continue the settle. `Seek` and finish still leave velocity at 0. The drag measures its own speed and passes it in.
+
+`WithReduceMotion(true)` on a recipe jumps that axis to its end on release. Releasing when progress is already 0 or 1 finishes that axis immediately.
+
+On a page, `Drag` installs the pan. The wrapper fills its cell, the recognizer sits on the wrapper, and the motions run on the child. A lane is `.X` only. Four corners are `.X` and `.Y`. Each axis springs on its own, so the four pairs are the four corners. The center, where both axes are 0.5, goes to the far corner on both axes.
+
+```csharp
+card.Drag(drop, plane => plane
+    .X(m => m.TranslateX(0, 180).WithDuration(400).WithEasing(Easing.Linear))
+    .Y(m => m.TranslateY(0, 120).WithDuration(400).WithEasing(Easing.Linear)));
+```
+
+Lifting the finger releases with the sampled speed of each axis. A canceled pan releases both with speed 0, so the card still settles. Grabbing again seeks the current progress and the settle stops under the finger. Another property on the same view keeps its own player. A non-finite travel, or one smaller than a millionth of a pixel, counts as 1.
+
 ### Repeat and yoyo
 
 ```csharp
@@ -932,7 +974,7 @@ A posed replacement still receives the spring speed of the properties it takes. 
 
 ## Samples
 
-`samples/Sample` is a MauiReactor gallery. Home lists the playground, stagger, scrub, color spaces, timeline seek, path (Bézier + arc), matrix (turn and tilt), enter / exit, and poses. On the poses page, Play springs two cards toward an outline. Halfway, Pose comes back from the live position and keeps the spring speed. Snap jumps onto the outline, then comes back.
+`samples/Sample` is a MauiReactor gallery. Home lists the playground, stagger, scrub, color spaces, timeline seek, path (Bézier + arc), matrix (turn and tilt), enter / exit, poses, and drag. On the poses page, Play springs two cards toward an outline. Halfway, Pose comes back from the live position and keeps the spring speed. Snap jumps onto the outline, then comes back. On the drag page, one card follows the finger along a lane and springs to the nearer end. Another moves across a board and springs to the nearest corner. Both keep the speed of the flick.
 
 ## Building
 

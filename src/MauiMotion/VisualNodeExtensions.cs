@@ -64,4 +64,23 @@ public static class VisualNodeExtensions
         ArgumentNullException.ThrowIfNull(exit);
         return node.EnterExit(present, enter(Motion.None), exit(Motion.None));
     }
+
+    /// <summary>
+    /// Drags the child on the finger axes in <paramref name="plane"/>.
+    /// On release each axis springs to its nearer end with <paramref name="spring"/>
+    /// and keeps that axis's speed. The pan recognizer sits on the wrapper.
+    /// The motions run on the child.
+    /// </summary>
+    public static VisualNode Drag(
+        this VisualNode node,
+        Spring spring,
+        Func<DragPlane, DragPlane> plane)
+    {
+        ArgumentNullException.ThrowIfNull(node);
+        ArgumentNullException.ThrowIfNull(plane);
+        return new DragElement(plane(new DragPlane()), spring)
+        {
+            node
+        };
+    }
 }

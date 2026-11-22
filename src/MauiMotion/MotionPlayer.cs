@@ -27,6 +27,7 @@ public sealed class MotionPlayer : IDisposable
     double _x;
     double _v;
     double _springElapsedMs;
+    Spring? _gestureSpring;
     bool _hasTimedTracks;
     bool _hasTrackSprings;
     double? _poseKick;
@@ -134,7 +135,7 @@ public sealed class MotionPlayer : IDisposable
 
     /// <summary>
     /// Eased 0–1. Increases on forward and decreases on reverse.
-    /// A spring reports its position clamped to 0–1.
+    /// A spring, including a drag settle, reports its position clamped to 0–1.
     /// </summary>
     public double Progress { get; private set; }
 
@@ -273,6 +274,7 @@ public sealed class MotionPlayer : IDisposable
         CancelPending();
         _elapsedMs = 0;
         _holdMs = 0;
+        _gestureSpring = null;
         _direction = 1;
         if (_captured)
         {
@@ -352,9 +354,58 @@ public sealed class MotionPlayer : IDisposable
         SeekLinear(u);
     }
 
+    /// <summary>
+    /// Springs to the nearer end. Progress at or above 0.5 targets 1. Below 0.5
+    /// targets 0. <paramref name="velocity"/> is progress units per second and is
+    /// the spring's initial speed. Positive velocity moves toward 1. NaN and
+    /// infinities count as 0. Delay, repeat, and yoyo do not continue this settle.
+    /// <see cref="Motion.WithReduceMotion"/> finishes on this call.
+    /// </summary>
+    public void SpringToNearest(Spring spring, double velocity = 0)
+    {
+        ThrowIfDisposed();
+        var progress = Progress;
+        if (double.IsNaN(progress) || double.IsInfinity(progress))
+            progress = 0;
+        if (double.IsNaN(velocity) || double.IsInfinity(velocity))
+            velocity = 0;
+
+        var forward = progress >= 0.5;
+        _autoRepeat = false;
+        _holdMs = 0;
+        _gestureSpring = spring;
+        _x = progress;
+        _v = velocity;
+        _direction = forward ? 1 : -1;
+        _springElapsedMs = 0;
+        ParkTrackSprings();
+        if (!HasLivePending)
+            _pending = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        SetStatus(forward ? MotionPlaybackStatus.Forward : MotionPlaybackStatus.Reverse);
+        _runArgs = NewArgs();
+        Raise(Started);
+
+        var atEnd = forward ? progress >= 1 : progress <= 0;
+        if (atEnd || Motion.ReduceMotion == true)
+        {
+            if (forward)
+                FinishForward();
+            else
+                FinishReverse(cancelPending: false);
+            return;
+        }
+
+        foreach (var runtime in _runtimes)
+            runtime.WriteSpringProgress(_x);
+        ReportProgress();
+        StartClock();
+    }
+
     void SeekLinear(double u)
     {
         u = double.IsNaN(u) || double.IsInfinity(u) ? 0 : Math.Clamp(u, 0, 1);
+        _gestureSpring = null;
         _autoRepeat = false;
         _clock.Stop();
         _holdMs = 0;
@@ -488,6 +539,7 @@ public sealed class MotionPlayer : IDisposable
             return Task.CompletedTask;
         }
 
+        _gestureSpring = null;
         _direction = running == MotionPlaybackStatus.Forward ? 1 : -1;
         if (recapture)
         {
@@ -615,6 +667,12 @@ public sealed class MotionPlayer : IDisposable
 
         if (!ConsumeHold(ref deltaMs))
             return;
+
+        if (_gestureSpring is { } gesture)
+        {
+            StepSpring(deltaMs, gesture);
+            return;
+        }
 
         if (Motion.Spring is { } spring)
         {
@@ -749,12 +807,16 @@ public sealed class MotionPlayer : IDisposable
             runtime.CompleteTrackSpring();
     }
 
+    bool DrivingSpring
+        => Motion.Spring is not null || _gestureSpring is not null;
+
     double PlaybackU
-        => Motion.Spring is null ? LinearU : Math.Clamp(_x, 0, 1);
+        => DrivingSpring ? Math.Clamp(_x, 0, 1) : LinearU;
 
     void FinishForward()
     {
         _clock.Stop();
+        _gestureSpring = null;
         _elapsedMs = Duration;
         _x = 1;
         _v = 0;
@@ -771,6 +833,7 @@ public sealed class MotionPlayer : IDisposable
     void FinishReverse(bool cancelPending)
     {
         _clock.Stop();
+        _gestureSpring = null;
         _elapsedMs = 0;
         _x = 0;
         _v = 0;
@@ -879,9 +942,9 @@ public sealed class MotionPlayer : IDisposable
 
     void ReportProgress()
     {
-        var progress = Motion.Spring is null
-            ? Motion.Easing.Ease(LinearU)
-            : PlaybackU;
+        var progress = DrivingSpring
+            ? PlaybackU
+            : Motion.Easing.Ease(LinearU);
         Progress = progress;
         if (_runArgs is not null)
         {

@@ -962,6 +962,26 @@ public sealed class Motion
         => Play(configure(None), [.. targets]);
 
     /// <summary>
+    /// Binds <paramref name="plane"/> to <paramref name="target"/> and waits.
+    /// The release <paramref name="spring"/> runs when <see cref="Drag.Release"/> is called.
+    /// The frame pump is the same one <see cref="Play(Motion, VisualElement[])"/> uses.
+    /// </summary>
+    public static Drag Drag(VisualElement target, Spring spring, Func<DragPlane, DragPlane> plane)
+    {
+        ArgumentNullException.ThrowIfNull(target);
+        ArgumentNullException.ThrowIfNull(plane);
+        return new Drag(target, spring, plane(new DragPlane()), manual: false);
+    }
+
+    /// <summary>Same as <see cref="Drag(VisualElement, Spring, Func{DragPlane, DragPlane})"/> with manual clocks for tests.</summary>
+    internal static Drag Drag(VisualElement target, Spring spring, Func<DragPlane, DragPlane> plane, bool manual)
+    {
+        ArgumentNullException.ThrowIfNull(target);
+        ArgumentNullException.ThrowIfNull(plane);
+        return new Drag(target, spring, plane(new DragPlane()), manual);
+    }
+
+    /// <summary>
     /// Binds <paramref name="motion"/> to <paramref name="target"/> and plays it forward.
     /// A later bind that writes one of these properties replaces that part of this run. Cancellation does not throw.
     /// </summary>
