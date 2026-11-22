@@ -57,15 +57,14 @@ sealed class MotionCollectionPage : Component<MotionCollectionPageState>
 
     VisualNode Items()
     {
-        VisualNode collection = Motion.Collection(
-            State.Items,
-            item => item.Id,
-            Row,
-            move: m => m.WithDuration(280).WithEasing(Easing.CubicOut),
-            enter: m => m.FadeIn().SlideIn(SlideFrom.Top, 16).WithDuration(280),
-            exit: m => m.FadeOut().WithDuration(200),
-            spacing: 8,
-            orientation: State.Orientation);
+        static Motion move(Motion m) => m.WithDuration(280).WithEasing(Easing.CubicOut);
+        static Motion enter(Motion m) => m.FadeIn().SlideIn(SlideFrom.Top, 16).WithDuration(280);
+        static Motion exit(Motion m) => m.FadeOut().WithDuration(200);
+        
+        var across = State.Orientation == MauiControls.StackOrientation.Horizontal;
+        VisualNode collection = across
+            ? Motion.HCollection(State.Items, item => item.Id, Row, move, enter, exit, spacing: 8)
+            : Motion.VCollection(State.Items, item => item.Id, Row, move, enter, exit, spacing: 8);
         if (State.Orientation != MauiControls.StackOrientation.Horizontal)
             return collection;
 

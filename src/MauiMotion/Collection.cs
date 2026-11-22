@@ -2,7 +2,7 @@ using MauiReactor;
 
 namespace Reactor.Motion;
 
-/// <summary>Builds the stack behind <see cref="Motion.Collection{T}"/>.</summary>
+/// <summary>Builds the stack behind <see cref="Motion.VCollection{T}"/>.</summary>
 internal static class FlipEntries
 {
     public static VisualNode Create<T>(
@@ -32,15 +32,25 @@ internal static class FlipEntries
 /// </summary>
 public static class CollectionExtensions
 {
-    /// <summary>Same as <c>Motion.Collection</c>.</summary>
-    public static VisualNode Collection<T>(
+    /// <summary>Same as <c>Motion.VCollection</c>.</summary>
+    public static VisualNode VCollection<T>(
         this IEnumerable<T> items,
         Func<T, object> key,
         Func<T, VisualNode> item,
         Func<Motion, Motion>? move = null,
         Func<Motion, Motion>? enter = null,
         Func<Motion, Motion>? exit = null,
-        double spacing = 0,
-        StackOrientation orientation = StackOrientation.Vertical)
-        => Motion.Collection(items, key, item, move, enter, exit, spacing, orientation);
+        double spacing = 0)
+        => Motion.VCollection(items, key, item, move, enter, exit, spacing);
+
+    /// <summary>Same as <c>Motion.HCollection</c>.</summary>
+    public static VisualNode HCollection<T>(
+        this IEnumerable<T> items,
+        Func<T, object> key,
+        Func<T, VisualNode> item,
+        Func<Motion, Motion>? move = null,
+        Func<Motion, Motion>? enter = null,
+        Func<Motion, Motion>? exit = null,
+        double spacing = 0)
+        => Motion.HCollection(items, key, item, move, enter, exit, spacing);
 }

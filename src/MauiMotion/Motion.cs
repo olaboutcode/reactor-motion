@@ -975,7 +975,7 @@ public sealed class Motion
     }
 
     /// <summary>
-    /// Shows <paramref name="items"/> in a stack. An item that stays slides
+    /// Shows <paramref name="items"/> in a vertical stack. An item that stays slides
     /// from its last position. An item that appears plays <paramref name="enter"/>.
     /// An item that leaves plays <paramref name="exit"/> where it was and stays
     /// until that run finishes, while the others close the gap.
@@ -993,19 +993,33 @@ public sealed class Motion
     /// The slide translates the item wrapper. Enter and exit use the same target
     /// walk as <c>BindMotion</c>. <paramref name="spacing"/> is the gap between
     /// items, in device-independent pixels.
-    /// <paramref name="orientation"/> stacks items down or across. The default is vertical.
-    /// <c>items.Collection(...)</c> is the same call.
+    /// <c>items.VCollection(...)</c> is the same call.
+    /// <see cref="HCollection{T}"/> lays the same items across.
     /// </remarks>
-    public static VisualNode Collection<T>(
+    public static VisualNode VCollection<T>(
         IEnumerable<T> items,
         Func<T, object> key,
         Func<T, VisualNode> item,
         Func<Motion, Motion>? move = null,
         Func<Motion, Motion>? enter = null,
         Func<Motion, Motion>? exit = null,
-        double spacing = 0,
-        StackOrientation orientation = StackOrientation.Vertical)
-        => FlipEntries.Create(items, key, item, move, enter, exit, spacing, orientation);
+        double spacing = 0)
+        => FlipEntries.Create(items, key, item, move, enter, exit, spacing, StackOrientation.Vertical);
+
+    /// <summary>
+    /// Shows <paramref name="items"/> in a horizontal stack.
+    /// Same arguments and behavior as <see cref="VCollection{T}"/>, with items laid across.
+    /// </summary>
+    /// <remarks><c>items.HCollection(...)</c> is the same call.</remarks>
+    public static VisualNode HCollection<T>(
+        IEnumerable<T> items,
+        Func<T, object> key,
+        Func<T, VisualNode> item,
+        Func<Motion, Motion>? move = null,
+        Func<Motion, Motion>? enter = null,
+        Func<Motion, Motion>? exit = null,
+        double spacing = 0)
+        => FlipEntries.Create(items, key, item, move, enter, exit, spacing, StackOrientation.Horizontal);
 
     /// <summary>Same as <see cref="Drag(VisualElement, Spring, Func{DragPlane, DragPlane})"/> with manual clocks for tests.</summary>
     internal static Drag Drag(VisualElement target, Spring spring, Func<DragPlane, DragPlane> plane, bool manual)

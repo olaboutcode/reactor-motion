@@ -127,14 +127,14 @@ global using Reactor.Motion;
 
 | Type | Role |
 |---|---|
-| `Motion` | Recipe, plus static `Define`, `Bind`, `Play`, `ForwardAsync`, `ReverseAsync`, `Drag`, and `Collection`. |
+| `Motion` | Recipe, plus static `Define`, `Bind`, `Play`, `ForwardAsync`, `ReverseAsync`, `Drag`, `VCollection`, and `HCollection`. |
 | `MotionPlayer` | Playback. |
 | `MotionPlaybackEventArgs` | Player events. State is `IsDismissed()`, `IsForward()`, `IsReverse()`, `IsPaused()`, and `IsCompleted()`. |
 | `Spring`, `Stagger`, `StaggerFrom`, `SlideFrom`, `ColorSpace`, `KeyframeBuilder<T>`, `Matrix4` | Recipe values. |
 | `MotionCurve` | `CubicBezier` easing. |
 | `MotionPreferences` | App-wide reduce-motion override. |
 | `VisualNodeExtensions` | `.BindMotion()`, `.EnterExit()`, `.Drag()`. |
-| `CollectionExtensions` | `.Collection()` on a keyed collection. |
+| `CollectionExtensions` | `.VCollection()` and `.HCollection()` on a keyed collection. |
 | `MotionPlayerExtensions` | Null-safe `Forward` and `Reverse` on `MotionPlayer?`. |
 
 The snippets below assume that using, plus `MauiReactor`.
@@ -490,7 +490,7 @@ An infinite `Repeat` on the exit never finishes, so the child never unmounts. Gi
 `Collection` is that presence for many items. Pass the items, a stable key, and the item. Items that stay slide from their last position. A new item plays enter. A removed item plays exit where it was and leaves the flow, so the others close the gap while it is still on screen. The first layout records positions and does not play.
 
 ```csharp
-Motion.Collection(
+Motion.VCollection(
     State.Items,
     item => item.Id,
     item => Row(item),
@@ -500,12 +500,14 @@ Motion.Collection(
     spacing: 8)
 ```
 
-`items.Collection(...)` is the same call. `orientation: StackOrientation.Horizontal` lays the items across. The default is vertical.
+`items.VCollection(...)` is the same call. `Motion.HCollection` and `items.HCollection(...)` lay the items across. The arguments are the same.
 
 | Member | Role |
 |---|---|
-| `Motion.Collection(IEnumerable<T> items, Func<T, object> key, Func<T, VisualNode> item, Func<Motion, Motion>? move = null, Func<Motion, Motion>? enter = null, Func<Motion, Motion>? exit = null, double spacing = 0, StackOrientation orientation = StackOrientation.Vertical)` | Stack of items. `move`, `enter`, and `exit` each receive an empty motion. |
-| `IEnumerable<T>.Collection(...)` | Same arguments, starting with the key. |
+| `Motion.VCollection(IEnumerable<T> items, Func<T, object> key, Func<T, VisualNode> item, Func<Motion, Motion>? move = null, Func<Motion, Motion>? enter = null, Func<Motion, Motion>? exit = null, double spacing = 0)` | Vertical stack. `move`, `enter`, and `exit` each receive an empty motion. |
+| `Motion.HCollection(...)` | Same arguments. Items run across. |
+| `IEnumerable<T>.VCollection(...)` | Same arguments as `Motion.VCollection`, starting with the key. |
+| `IEnumerable<T>.HCollection(...)` | Same arguments as `Motion.HCollection`, starting with the key. |
 
 `key` is compared with `Equals`. It must not be null. When two items share a key, the first one is kept.
 
@@ -1006,7 +1008,7 @@ A posed replacement still receives the spring speed of the properties it takes. 
 
 ## Samples
 
-`samples/Sample` is a MauiReactor gallery. Home lists the playground, stagger, scrub, color spaces, timeline seek, path (Bézier + arc), matrix (turn and tilt), enter / exit, poses, drag, and collection. On the poses page, Play springs two cards toward an outline. Halfway, Pose comes back from the live position and keeps the spring speed. Snap jumps onto the outline, then comes back. On the drag page, one card follows the finger along a lane and springs to the nearer end. Another moves across a board and springs to the nearest corner. Both keep the speed of the flick. On the collection page, adding, removing, or moving an item slides the items that stay. A removed item fades where it left. Horizontal lays the same items across.
+`samples/Sample` is a MauiReactor gallery. Home lists the playground, stagger, scrub, color spaces, timeline seek, path (Bézier + arc), matrix (turn and tilt), enter / exit, poses, drag, and collection. On the poses page, Play springs two cards toward an outline. Halfway, Pose comes back from the live position and keeps the spring speed. Snap jumps onto the outline, then comes back. On the drag page, one card follows the finger along a lane and springs to the nearer end. Another moves across a board and springs to the nearest corner. Both keep the speed of the flick. On the collection page, adding, removing, or moving an item slides the items that stay. A removed item fades where it left. The horizontal button uses `HCollection` to lay the same items across.
 
 ## Building
 
