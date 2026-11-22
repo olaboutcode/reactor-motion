@@ -62,7 +62,10 @@ public sealed class Motion
         bool timeline = false,
         bool durationSet = false,
         bool easingSet = false,
-        IReadOnlyList<TimelineBeat>? beats = null)
+        IReadOnlyList<TimelineBeat>? beats = null,
+        double rate = 1,
+        double springVelocity = 0,
+        bool? reduceMotion = null)
     {
         Duration = duration;
         Easing = easing;
@@ -79,6 +82,9 @@ public sealed class Motion
         _durationSet = durationSet;
         _easingSet = easingSet;
         _beats = beats ?? [];
+        Rate = rate;
+        SpringVelocity = springVelocity;
+        ReduceMotion = reduceMotion;
     }
 
     /// <summary>
@@ -112,6 +118,24 @@ public sealed class Motion
     internal ColorSpace ColorSpace => _colorSpace;
 
     internal Spring? Spring => _spring;
+
+    /// <summary>
+    /// Playback speed. <c>1</c> is normal. <c>2</c> halves the time a finite tick
+    /// covers. <c>0</c> holds the current frame. Default is <c>1</c>.
+    /// </summary>
+    public double Rate { get; }
+
+    /// <summary>
+    /// Initial spring velocity in progress units per second. <see cref="WithSpring(Spring, double)"/>
+    /// sets it for the whole recipe. Default is <c>0</c>.
+    /// </summary>
+    internal double SpringVelocity { get; }
+
+    /// <summary>
+    /// When true, playback writes the end pose and completes once.
+    /// When null, the player reads <see cref="MotionPreferences.ReduceMotion"/>.
+    /// </summary>
+    public bool? ReduceMotion { get; }
 
     /// <summary>
     /// Flutter <c>Matrix4.setEntry(3, 2, entry)</c>. Null leaves the platform
@@ -153,6 +177,25 @@ public sealed class Motion
             easingSet: true);
 
     /// <summary>
+    /// Multiplies every finite tick, including a <see cref="Delay"/> hold.
+    /// <c>1</c> is normal. <c>0</c> holds the current frame.
+    /// A negative, NaN, or infinite value becomes <c>0</c>.
+    /// </summary>
+    public Motion WithRate(double rate)
+    {
+        if (double.IsNaN(rate) || double.IsInfinity(rate) || rate < 0)
+            rate = 0;
+        return rate == Rate ? this : Copy(rate: rate);
+    }
+
+    /// <summary>
+    /// When <paramref name="enabled"/> is true, playback writes the end pose and completes once.
+    /// This wins over <see cref="MotionPreferences.ReduceMotion"/>.
+    /// </summary>
+    public Motion WithReduceMotion(bool enabled)
+        => ReduceMotion == enabled ? this : Copy(reduceMotion: enabled, setReduceMotion: true);
+
+    /// <summary>
     /// Hold the from-pose for <paramref name="milliseconds"/> before the tracks move.
     /// Does not change <see cref="Duration"/>. <c>0</c> clears a delay set earlier.
     /// On a child of <see cref="Add(Motion, uint, string?)"/> or <see cref="And(Motion)"/>, this wait is baked into
@@ -163,13 +206,53 @@ public sealed class Motion
 
     /// <summary>
     /// Play with a mass-spring-damper until rest. Mutually exclusive with
-    /// <see cref="WithDuration"/> / <see cref="Stagger"/>. Not an easing curve.
+    /// <see cref="WithDuration"/> / <see cref="Stagger"/> / <see cref="Settle"/>.
+    /// Not an easing curve.
+    /// <paramref name="velocity"/> is progress units per second at the start of a forward or reverse.
     /// </summary>
-    public Motion WithSpring(Spring spring)
+    public Motion WithSpring(Spring spring, double velocity = 0)
     {
         if (_stagger is not null)
             System.Diagnostics.Debug.Assert(false, "Stagger is ignored when WithSpring is set.");
-        return Copy(spring: spring, setSpring: true);
+        if (HasTrackSpring())
+            System.Diagnostics.Debug.Assert(false, "WithSpring replaces Settle. A recipe uses one or the other.");
+        return Copy(spring: spring, setSpring: true, springVelocity: SanitizeVelocity(velocity));
+    }
+
+    /// <summary>
+    /// Springs each track added so far. Tracks added after this call stay on the duration clock.
+    /// Mutually exclusive with <see cref="WithSpring(Spring, double)"/>.
+    /// <paramref name="velocity"/> is progress units per second when that track's spring starts.
+    /// </summary>
+    public Motion Settle(Spring spring, double velocity = 0)
+    {
+        if (_spring is not null)
+        {
+            System.Diagnostics.Debug.Assert(false, "Settle is ignored when WithSpring is set.");
+            return this;
+        }
+
+        if (_tracks.Count == 0)
+            return this;
+
+        velocity = SanitizeVelocity(velocity);
+        var tracks = new MotionTrack[_tracks.Count];
+        var changed = false;
+        for (var i = 0; i < _tracks.Count; i++)
+        {
+            var track = _tracks[i];
+            if (track.TrackSpring is null)
+            {
+                tracks[i] = track with { TrackSpring = spring, TrackSpringVelocity = velocity };
+                changed = true;
+            }
+            else
+            {
+                tracks[i] = track;
+            }
+        }
+
+        return changed ? Copy(tracks: tracks) : this;
     }
 
     /// <summary>
@@ -247,12 +330,50 @@ public sealed class Motion
         => AddKeyframes(VisualElement.TranslationYProperty, SemanticTrack.None, frames);
 
     /// <summary>
+    /// Moves <see cref="VisualElement.AnchorX"/> to <paramref name="to"/>.
+    /// The live value is captured on the first forward. <c>0.5</c> is the center.
+    /// </summary>
+    public Motion AnchorX(double to)
+        => Add(VisualElement.AnchorXProperty, null, to);
+
+    /// <summary>
+    /// Moves <see cref="VisualElement.AnchorX"/> from <paramref name="from"/> to <paramref name="to"/>.
+    /// The first forward writes <paramref name="from"/>.
+    /// </summary>
+    public Motion AnchorX(double from, double to)
+        => Add(VisualElement.AnchorXProperty, from, to);
+
+    /// <summary><see cref="VisualElement.AnchorX"/> stops at 0–1 of this motion.</summary>
+    public Motion AnchorX(Func<KeyframeBuilder<double>, KeyframeBuilder<double>> frames)
+        => AddKeyframes(VisualElement.AnchorXProperty, SemanticTrack.None, frames);
+
+    /// <summary>
+    /// Moves <see cref="VisualElement.AnchorY"/> to <paramref name="to"/>.
+    /// The live value is captured on the first forward. <c>0.5</c> is the center.
+    /// </summary>
+    public Motion AnchorY(double to)
+        => Add(VisualElement.AnchorYProperty, null, to);
+
+    /// <summary>
+    /// Moves <see cref="VisualElement.AnchorY"/> from <paramref name="from"/> to <paramref name="to"/>.
+    /// The first forward writes <paramref name="from"/>.
+    /// </summary>
+    public Motion AnchorY(double from, double to)
+        => Add(VisualElement.AnchorYProperty, from, to);
+
+    /// <summary><see cref="VisualElement.AnchorY"/> stops at 0–1 of this motion.</summary>
+    public Motion AnchorY(Func<KeyframeBuilder<double>, KeyframeBuilder<double>> frames)
+        => AddKeyframes(VisualElement.AnchorYProperty, SemanticTrack.None, frames);
+
+    /// <summary>
     /// Writes <see cref="VisualElement.TranslationXProperty"/> and
     /// <see cref="VisualElement.TranslationYProperty"/> along
     /// <paramref name="geometry"/>. <paramref name="from"/> / <paramref name="to"/>
     /// are 0–1 of path length. Stagger delays the start of path <c>t</c>.
+    /// When <paramref name="orient"/> is true, the track also writes
+    /// <see cref="VisualElement.Rotation"/> from the curve direction.
     /// </summary>
-    public Motion Path(PathGeometry geometry, double from = 0, double to = 1)
+    public Motion Path(PathGeometry geometry, double from = 0, double to = 1, bool orient = false)
     {
         ArgumentNullException.ThrowIfNull(geometry);
         from = double.IsNaN(from) || double.IsInfinity(from) ? 0 : Math.Clamp(from, 0, 1);
@@ -262,6 +383,7 @@ public sealed class Motion
             Path = geometry,
             PathFrom = from,
             PathTo = to,
+            Orient = orient,
         });
     }
 
@@ -381,7 +503,7 @@ public sealed class Motion
     /// <paramref name="entry"/> is Flutter's <c>Matrix4.setEntry(3, 2, entry)</c>:
     /// the camera sits <c>1/entry</c> device-independent pixels away.
     /// <c>0.001</c> shrinks the far edge a little. <c>0</c> keeps both edges the same height.
-    /// Windows keeps its plane projection and does not use this distance.
+    /// On Windows the same entry is written into the composition transform.
     /// </summary>
     public Motion Perspective(double entry)
     {
@@ -707,7 +829,10 @@ public sealed class Motion
             other._perspective ?? _perspective,
             0,
             durationSet: _durationSet || other._durationSet,
-            easingSet: _easingSet || other._easingSet);
+            easingSet: _easingSet || other._easingSet,
+            rate: other.Rate != 1 ? other.Rate : Rate,
+            springVelocity: other._spring is not null ? other.SpringVelocity : SpringVelocity,
+            reduceMotion: other.ReduceMotion ?? ReduceMotion);
     }
 
     /// <summary>
@@ -959,7 +1084,11 @@ public sealed class Motion
         bool? timeline = null,
         bool? durationSet = null,
         bool? easingSet = null,
-        IReadOnlyList<TimelineBeat>? beats = null)
+        IReadOnlyList<TimelineBeat>? beats = null,
+        double? rate = null,
+        double? springVelocity = null,
+        bool? reduceMotion = null,
+        bool setReduceMotion = false)
         => new(
             duration ?? Duration,
             easing ?? Easing,
@@ -975,7 +1104,24 @@ public sealed class Motion
             timeline ?? _timeline,
             durationSet ?? _durationSet,
             easingSet ?? _easingSet,
-            beats ?? _beats);
+            beats ?? _beats,
+            rate ?? Rate,
+            springVelocity ?? (setSpring ? 0 : SpringVelocity),
+            setReduceMotion ? reduceMotion : ReduceMotion);
+
+    static double SanitizeVelocity(double velocity)
+        => double.IsNaN(velocity) || double.IsInfinity(velocity) ? 0 : velocity;
+
+    bool HasTrackSpring()
+    {
+        for (var i = 0; i < _tracks.Count; i++)
+        {
+            if (_tracks[i].TrackSpring is not null)
+                return true;
+        }
+
+        return false;
+    }
 
     bool HasTransformTrack()
     {

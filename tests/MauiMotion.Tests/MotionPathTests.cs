@@ -25,6 +25,7 @@ public sealed class MotionPathTests
         _ = player.ForwardAsync();
         Assert.Equal(0, box.TranslationX, 3);
         Assert.Equal(0, box.TranslationY, 3);
+        Assert.Equal(0, box.Rotation, 3);
         clock.Tick(100);
         Assert.Equal(50, box.TranslationX, 3);
         Assert.Equal(0, box.TranslationY, 3);

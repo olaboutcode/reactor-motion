@@ -72,6 +72,17 @@ internal readonly record struct MotionTrack(
     /// Beat that owns this track. <c>-1</c> means the track is not part of a timeline beat.
     /// </summary>
     public int BeatId { get; init; } = -1;
+
+    /// <summary>
+    /// Spring for this track only. Null keeps the track on the duration clock.
+    /// </summary>
+    public Spring? TrackSpring { get; init; }
+
+    /// <summary>Progress units per second, applied when this track's spring starts.</summary>
+    public double TrackSpringVelocity { get; init; }
+
+    /// <summary>When true, a path track also writes <see cref="VisualElement.Rotation"/> from the tangent.</summary>
+    public bool Orient { get; init; }
 }
 
 /// <summary>

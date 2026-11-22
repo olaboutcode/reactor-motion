@@ -111,6 +111,30 @@ internal static class PerspectivePlane
         return (float)(density * density * eyeDips * Math.Sqrt(5.0));
     }
 
+    /// <summary>
+    /// Pose matrix for a view rotating in depth. <paramref name="entry"/> is written
+    /// at row 3, column 2. Rotations are degrees.
+    /// </summary>
+    internal static Matrix4 PoseMatrix(
+        double translationX,
+        double translationY,
+        double rotationXDegrees,
+        double rotationYDegrees,
+        double rotationDegrees,
+        double scaleX,
+        double scaleY,
+        double entry)
+    {
+        var rad = Math.PI / 180.0;
+        return Matrix4.Identity
+            .SetEntry(3, 2, entry)
+            .Translate(translationX, translationY)
+            .RotateY(rotationYDegrees * rad)
+            .RotateX(rotationXDegrees * rad)
+            .RotateZ(rotationDegrees * rad)
+            .Scale(scaleX, scaleY, 1);
+    }
+
     public static void Apply(VisualElement view, double perspectiveEntry)
     {
 #if IOS || MACCATALYST || ANDROID

@@ -27,6 +27,8 @@ public sealed class MotionPlayer : IDisposable
     double _x;
     double _v;
     double _springElapsedMs;
+    bool _hasTimedTracks;
+    bool _hasTrackSprings;
 
     internal MotionPlayer(Motion motion, IReadOnlyList<VisualElement> targets, MotionClock? clock = null)
     {
@@ -40,9 +42,26 @@ public sealed class MotionPlayer : IDisposable
             : 0;
         Duration = parentSpan == 0 ? 0 : parentSpan + (uint)Math.Round(maxDelay);
         _runtimes = BuildRuntimes(motion, _targets, parentSpan, Duration);
+        NoteTracks();
         foreach (var target in _targets)
             MotionPlayers.Register(target, this);
     }
+
+    void NoteTracks()
+    {
+        foreach (var runtime in _runtimes)
+        {
+            if (runtime.HasTrackSpring)
+                _hasTrackSprings = true;
+            else
+                _hasTimedTracks = true;
+        }
+
+        if (Motion.Spring is not null && _hasTrackSprings)
+            System.Diagnostics.Debug.Assert(false, "WithSpring and Settle cannot share a recipe.");
+    }
+
+    bool Reducing => Motion.ReduceMotion ?? MotionPreferences.IsReduceMotionEnabled();
 
     internal static MotionPlayer Create(
         Motion motion,
@@ -299,6 +318,7 @@ public sealed class MotionPlayer : IDisposable
         _holdMs = 0;
         _elapsedMs = u * Duration;
         ResetSpring(u);
+        ParkTrackSprings();
         Apply(u);
 
         if (u >= 1)
@@ -373,12 +393,14 @@ public sealed class MotionPlayer : IDisposable
             _captured = true;
             _elapsedMs = 0;
             _repeatRemaining = Motion.RepeatCount < 0 ? -1 : Math.Max(1, Motion.RepeatCount);
-            ResetSpring(_direction > 0 ? 0 : 1);
+            ResetSpring(_direction > 0 ? 0 : 1, kick: true);
+            KickTrackSprings();
         }
         else if (Status == MotionPlaybackStatus.Completed && running == MotionPlaybackStatus.Reverse)
         {
             _elapsedMs = Duration;
-            ResetSpring(1);
+            ResetSpring(1, kick: true);
+            KickTrackSprings();
         }
 
         ArmHold(running, recapture);
@@ -399,7 +421,7 @@ public sealed class MotionPlayer : IDisposable
             return task;
         }
 
-        if (Duration == 0 && Motion.Spring is null && _holdMs <= 0)
+        if (Reducing)
         {
             if (_direction > 0)
                 FinishForward();
@@ -408,9 +430,21 @@ public sealed class MotionPlayer : IDisposable
             return task;
         }
 
-        _clock.Start(_targets);
+        if (Duration == 0 && Motion.Spring is null && !_hasTrackSprings && _holdMs <= 0)
+        {
+            if (_direction > 0)
+                FinishForward();
+            else
+                FinishReverse(cancelPending: false);
+            return task;
+        }
+
+        StartClock();
         return task;
     }
+
+    void StartClock()
+        => _clock.Start(_targets);
 
     void ResumeRunning()
     {
@@ -418,7 +452,7 @@ public sealed class MotionPlayer : IDisposable
         _runArgs = _runArgs is null ? NewArgs() : _runArgs;
         _runArgs.Status = Status;
         Raise(Resumed);
-        _clock.Start(_targets);
+        StartClock();
     }
 
     void ArmHold(MotionPlaybackStatus running, bool recapture)
@@ -468,6 +502,13 @@ public sealed class MotionPlayer : IDisposable
         if (_disposed || !IsRunning)
             return;
 
+        if (!double.IsPositiveInfinity(deltaMs))
+        {
+            deltaMs *= Motion.Rate;
+            if (deltaMs == 0)
+                return;
+        }
+
         if (!ConsumeHold(ref deltaMs))
             return;
 
@@ -477,15 +518,26 @@ public sealed class MotionPlayer : IDisposable
             return;
         }
 
-        if (double.IsPositiveInfinity(deltaMs) || Duration == 0)
+        if (double.IsPositiveInfinity(deltaMs))
         {
-            if (_direction > 0)
-                FinishForward();
-            else
-                FinishReverse(cancelPending: false);
+            FinishInDirection();
             return;
         }
 
+        if (Duration == 0 && !_hasTrackSprings)
+        {
+            FinishInDirection();
+            return;
+        }
+
+        if (_hasTrackSprings)
+            StepMixed(deltaMs);
+        else
+            StepClock(deltaMs);
+    }
+
+    void StepClock(double deltaMs)
+    {
         _elapsedMs += _direction * deltaMs;
         if (_elapsedMs >= Duration)
         {
@@ -509,50 +561,84 @@ public sealed class MotionPlayer : IDisposable
         ReportProgress();
     }
 
+    void StepMixed(double deltaMs)
+    {
+        _elapsedMs += _direction * deltaMs;
+        if (_direction > 0 && _elapsedMs > Duration)
+            _elapsedMs = Duration;
+        else if (_direction < 0 && _elapsedMs < 0)
+            _elapsedMs = 0;
+
+        var u = LinearU;
+        Apply(u);
+        var awaitingSpring = false;
+        var anyLiveSpring = false;
+        foreach (var runtime in _runtimes)
+        {
+            if (!runtime.HasTrackSpring || !runtime.SpringLive)
+                continue;
+
+            anyLiveSpring = true;
+            if (u < runtime.WindowBegin || !runtime.StepTrackSpring(deltaMs, _direction))
+                awaitingSpring = true;
+        }
+
+        ReportProgress();
+        var clockDone = _direction > 0 ? _elapsedMs >= Duration : _elapsedMs <= 0;
+        var timedDone = _hasTimedTracks || !anyLiveSpring ? clockDone : true;
+        if (timedDone && !awaitingSpring)
+            FinishInDirection();
+    }
+
+    void FinishInDirection()
+    {
+        if (_direction > 0)
+            FinishForward();
+        else
+            FinishReverse(cancelPending: false);
+    }
+
     void StepSpring(double deltaMs, Spring spring)
     {
         var target = _direction > 0 ? 1d : 0d;
-        if (double.IsPositiveInfinity(deltaMs))
-        {
-            _x = target;
-            _v = 0;
-            Apply(target);
-            ReportProgress();
-            if (_direction > 0)
-                FinishForward();
-            else
-                FinishReverse(cancelPending: false);
-            return;
-        }
-
-        var dt = Math.Min(Math.Max(deltaMs, 0) / 1000d, 1d / 30d);
-        var mass = Math.Max(spring.Mass, 1e-6);
-        var stiffness = Math.Max(spring.Stiffness, 1e-6);
-        var damping = Math.Max(spring.Damping, 0);
-        var accel = (-stiffness * (_x - target) - damping * _v) / mass;
-        _v += accel * dt;
-        _x += _v * dt;
-        _springElapsedMs += deltaMs;
-
+        SpringStep.Integrate(spring, deltaMs, target, ref _x, ref _v, ref _springElapsedMs, out var settled);
         Apply(PlaybackU);
         ReportProgress();
+        if (!settled)
+            return;
 
-        if (Math.Abs(_x - target) < 0.002 && Math.Abs(_v) < 0.002 || _springElapsedMs > 8000)
-        {
-            _x = target;
-            _v = 0;
-            if (_direction > 0)
-                FinishForward();
-            else
-                FinishReverse(cancelPending: false);
-        }
+        if (_direction > 0)
+            FinishForward();
+        else
+            FinishReverse(cancelPending: false);
     }
 
-    void ResetSpring(double x)
+    void ResetSpring(double x, bool kick = false)
     {
         _x = x;
-        _v = 0;
+        _v = kick && Motion.Spring is not null ? _direction * Motion.SpringVelocity : 0;
         _springElapsedMs = 0;
+    }
+
+    void KickTrackSprings()
+    {
+        if (Motion.Spring is not null)
+            return;
+
+        foreach (var runtime in _runtimes)
+            runtime.KickTrackSpring(_direction);
+    }
+
+    void ParkTrackSprings()
+    {
+        foreach (var runtime in _runtimes)
+            runtime.ParkTrackSpring();
+    }
+
+    void ReleaseTrackSprings()
+    {
+        foreach (var runtime in _runtimes)
+            runtime.CompleteTrackSpring();
     }
 
     double PlaybackU
@@ -564,11 +650,12 @@ public sealed class MotionPlayer : IDisposable
         _elapsedMs = Duration;
         _x = 1;
         _v = 0;
+        ReleaseTrackSprings();
         Apply(1);
         SetStatus(MotionPlaybackStatus.Completed);
         ReportProgress();
         Raise(Completed);
-        if (_autoRepeat && TryContinueAfterForward())
+        if (_autoRepeat && !Reducing && TryContinueAfterForward())
             return;
         CompletePending();
     }
@@ -579,10 +666,11 @@ public sealed class MotionPlayer : IDisposable
         _elapsedMs = 0;
         _x = 0;
         _v = 0;
+        ReleaseTrackSprings();
         Apply(0);
         SetStatus(MotionPlaybackStatus.Dismissed);
         ReportProgress();
-        if (!cancelPending && _autoRepeat && TryContinueAfterReverse())
+        if (!cancelPending && _autoRepeat && !Reducing && TryContinueAfterReverse())
             return;
         if (cancelPending)
             CancelPending();
@@ -592,7 +680,7 @@ public sealed class MotionPlayer : IDisposable
 
     bool TryContinueAfterForward()
     {
-        if (_disposed || Duration == 0 && Motion.Spring is null)
+        if (_disposed || Duration == 0 && Motion.Spring is null && !_hasTrackSprings)
             return false;
         if (Motion.YoyoEnabled)
         {
@@ -608,7 +696,7 @@ public sealed class MotionPlayer : IDisposable
 
     bool TryContinueAfterReverse()
     {
-        if (_disposed || Duration == 0 && Motion.Spring is null || !Motion.YoyoEnabled)
+        if (_disposed || (Duration == 0 && Motion.Spring is null && !_hasTrackSprings) || !Motion.YoyoEnabled)
             return false;
         if (!ConsumeRepeat())
             return false;
@@ -631,7 +719,8 @@ public sealed class MotionPlayer : IDisposable
         _elapsedMs = 0;
         _holdMs = 0;
         _direction = 1;
-        ResetSpring(0);
+        ResetSpring(0, kick: true);
+        KickTrackSprings();
         foreach (var runtime in _runtimes)
             runtime.WriteFrom();
         SetStatus(MotionPlaybackStatus.Forward);
@@ -639,7 +728,7 @@ public sealed class MotionPlayer : IDisposable
         Raise(Started);
         Apply(0);
         ReportProgress();
-        _clock.Start(_targets);
+        StartClock();
     }
 
     void ContinueReverse()
@@ -647,13 +736,14 @@ public sealed class MotionPlayer : IDisposable
         _elapsedMs = Duration;
         _holdMs = 0;
         _direction = -1;
-        ResetSpring(1);
+        ResetSpring(1, kick: true);
+        KickTrackSprings();
         SetStatus(MotionPlaybackStatus.Reverse);
         _runArgs = NewArgs();
         Raise(Started);
         Apply(1);
         ReportProgress();
-        _clock.Start(_targets);
+        StartClock();
     }
 
     void CancelToPaused()
@@ -793,7 +883,9 @@ public sealed class MotionPlayer : IDisposable
                         begin,
                         end,
                         track.Easing ?? motion.Easing,
-                        transform: track.Transform));
+                        transform: track.Transform,
+                        trackSpring: track.TrackSpring,
+                        trackSpringVelocity: track.TrackSpringVelocity));
                     continue;
                 }
 
@@ -814,7 +906,10 @@ public sealed class MotionPlayer : IDisposable
                         track.Easing ?? motion.Easing,
                         path: sampler,
                         pathFrom: track.PathFrom,
-                        pathTo: track.PathTo));
+                        pathTo: track.PathTo,
+                        trackSpring: track.TrackSpring,
+                        trackSpringVelocity: track.TrackSpringVelocity,
+                        orient: track.Orient));
                     continue;
                 }
 
@@ -831,7 +926,9 @@ public sealed class MotionPlayer : IDisposable
                     track.Easing ?? motion.Easing,
                     track.Keyframes,
                     motion.ColorSpace,
-                    perspective: motion.PerspectiveEntry));
+                    perspective: motion.PerspectiveEntry,
+                    trackSpring: track.TrackSpring,
+                    trackSpringVelocity: track.TrackSpringVelocity));
             }
         }
 

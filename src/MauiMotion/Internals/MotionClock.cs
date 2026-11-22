@@ -7,20 +7,17 @@ namespace Reactor.Motion.Internals;
 /// Frame pump for <see cref="MotionPlayer"/>.
 /// Each tick reports delta milliseconds. A manual clock does not subscribe to the
 /// platform animation manager; tests advance it with <c>Tick</c>.
-/// The dispatcher timer is created once and restarted. <see cref="IsPumping"/>
-/// is true for a manual clock, or while that timer is running. A stopped timer
-/// is not pumping, so a player that could not start still finishes.
+/// Live clocks share <see cref="SharedTicker"/>. <see cref="IsPumping"/>
+/// is true for a manual clock, or while that shared timer is running.
 /// </summary>
 internal sealed class MotionClock
 {
     readonly bool _manual;
     Action<double>? _onDelta;
     IAnimationManager? _manager;
-    IDispatcherTimer? _timer;
     bool _running;
     bool _pumping;
     bool _loggedEnergySaver;
-    long _lastTicks;
 
     public MotionClock(bool manual = false)
     {
@@ -67,19 +64,18 @@ internal sealed class MotionClock
             return;
         }
 
-        if (Application.Current?.Dispatcher is not { } dispatcher)
+        if (Application.Current?.Dispatcher is null)
             return;
 
-        _lastTicks = Environment.TickCount64;
-        if (_timer is null)
-        {
-            _timer = dispatcher.CreateTimer();
-            _timer.Interval = TimeSpan.FromMilliseconds(16);
-            _timer.Tick += OnTick;
-        }
+        JoinShared();
+    }
 
-        _timer.Start();
+    /// <summary>Joins the shared ticker. Tests use this without a dispatcher.</summary>
+    internal void JoinShared()
+    {
+        _running = true;
         _pumping = true;
+        SharedTicker.Join(this);
     }
 
     public void Stop()
@@ -87,21 +83,20 @@ internal sealed class MotionClock
         _running = false;
         _pumping = false;
         _manager = null;
-        _timer?.Stop();
+        if (!_manual)
+            SharedTicker.Leave(this);
     }
 
-    void OnTick(object? sender, EventArgs e)
+    internal void Pump(double deltaMs)
     {
         if (!_running)
             return;
         if (_manager?.Ticker is { SystemEnabled: false })
             return;
 
-        var now = Environment.TickCount64;
-        var delta = (now - _lastTicks) * (_manager?.SpeedModifier ?? 1);
-        _lastTicks = now;
-        if (delta > 0)
-            _onDelta?.Invoke(delta);
+        deltaMs *= _manager?.SpeedModifier ?? 1;
+        if (deltaMs > 0)
+            _onDelta?.Invoke(deltaMs);
     }
 
     public void Tick(double deltaMilliseconds)

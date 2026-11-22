@@ -44,12 +44,32 @@ internal sealed class PathSampler
 
     public Point PointAt(double t)
     {
+        var (a, b, s) = Place(t);
+        return new Point(a.X + ((b.X - a.X) * s), a.Y + ((b.Y - a.Y) * s));
+    }
+
+    /// <summary>
+    /// Clockwise degrees from the positive X axis. UI Y grows downward, so this
+    /// matches <see cref="VisualElement.Rotation"/>.
+    /// </summary>
+    public double HeadingAt(double t)
+    {
+        var (a, b, _) = Place(t);
+        var dx = b.X - a.X;
+        var dy = b.Y - a.Y;
+        if (Math.Abs(dx) < 1e-9 && Math.Abs(dy) < 1e-9)
+            return 0;
+        return Math.Atan2(dy, dx) * (180.0 / Math.PI);
+    }
+
+    (Point A, Point B, double S) Place(double t)
+    {
         t = double.IsNaN(t) || double.IsInfinity(t) ? 0 : Math.Clamp(t, 0, 1);
         var d = t * _length;
         if (d <= 0)
-            return _points[0];
+            return (_points[0], _points[1], 0);
         if (d >= _length)
-            return _points[^1];
+            return (_points[^2], _points[^1], 1);
 
         // Playback samples nearby distances, so resume at the last segment.
         var i = _segment;
@@ -70,9 +90,7 @@ internal sealed class PathSampler
         var prev = _cum[i - 1];
         var span = _cum[i] - prev;
         var s = span <= 0 ? 1 : (d - prev) / span;
-        var a = _points[i - 1];
-        var b = _points[i];
-        return new Point(a.X + (b.X - a.X) * s, a.Y + (b.Y - a.Y) * s);
+        return (_points[i - 1], _points[i], s);
     }
 
     static List<Point> Flatten(PathGeometry geometry)

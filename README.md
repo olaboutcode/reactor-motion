@@ -20,6 +20,7 @@ In-page view motion for [MauiReactor](https://github.com/adospace/reactorui-maui
   - [Property tracks](#property-tracks)
     - [Opacity](#opacity)
     - [Translation](#translation)
+    - [Anchor](#anchor)
     - [Scale](#scale)
     - [Rotation](#rotation)
     - [Depth](#depth)
@@ -126,6 +127,9 @@ global using Reactor.Motion;
 | `MotionPlayer` | Playback. |
 | `MotionPlaybackEventArgs` | Player events. State is `IsDismissed()`, `IsForward()`, `IsReverse()`, `IsPaused()`, and `IsCompleted()`. |
 | `Spring`, `Stagger`, `StaggerFrom`, `SlideFrom`, `ColorSpace`, `KeyframeBuilder<T>`, `Matrix4` | Recipe values. |
+| `MotionTime` | Named durations: `Fast` 160, `Normal` 280, `Slow` 400. |
+| `MotionCurve` | `CubicBezier` easing. |
+| `MotionPreferences` | App-wide reduce-motion override. |
 | `VisualNodeExtensions` | `.BindMotion()`. |
 | `MotionPlayerExtensions` | Null-safe `Forward` and `Reverse` on `MotionPlayer?`. |
 
@@ -178,6 +182,16 @@ m.TranslateX(k => k.At(0, -40).At(1, 0))
 
 Values are device-independent pixels. `Translate(x, y)` is `TranslateX` then `TranslateY`.
 
+#### Anchor
+
+```csharp
+m.AnchorX(0.5, 0)
+m.AnchorY(1, 0.5)
+m.AnchorX(k => k.At(0, 0.5).At(1, 0))
+```
+
+`AnchorX` and `AnchorY` are the pivot, from 0 to 1. The default is the center, `0.5`. `RotateX` and `RotateY` turn around that point. An anchor track can share a recipe with translation, rotation, and scale.
+
 #### Scale
 
 ```csharp
@@ -215,7 +229,7 @@ Motion.None
 
 Call `Perspective` together with `RotateX` or `RotateY`. On iOS and Mac Catalyst the recipe writes `CATransform3D.m34 = -entry` after the platform builds its transform, using the same anchor, translation, rotation, and scale composition as MAUI. On Android the same eye distance is passed to `CameraDistance`, scaled by `density² × √5`, so the foreshortening matches that entry. An entry of `0` parks the Android camera far enough that the plane does not foreshorten.
 
-On Windows, `RotateX` and `RotateY` still run through MAUI's plane projection, at the platform distance. `Perspective(entry)` does not change that distance.
+On Windows, a recipe that sets `Perspective` writes one pose matrix to the composition visual. That matrix carries translation, rotation, scale, and the perspective entry, so those channels are not also written as bindable properties.
 
 A later recipe on the same view replaces the entry. `And` keeps the right-hand entry when the right-hand motion has one.
 
@@ -315,6 +329,22 @@ m.WithDuration(280).WithEasing(Easing.CubicOut)
 | `WithDuration(uint milliseconds)` | Sets the length. Does not clear a delay. |
 | `WithDelay(uint milliseconds)` | Sets the hold. Does not change the length. `0` clears a delay. |
 | `WithEasing(Easing easing)` | Sets the easing. `null` throws. |
+| `WithRate(double rate)` | Multiplies every finite tick, including the delay hold. `1` is normal. `0` holds the current frame. A negative, NaN, or infinite value becomes `0`. |
+| `WithReduceMotion(bool enabled)` | Writes the end pose and completes once. Wins over `MotionPreferences.ReduceMotion`. |
+| `MotionTime.Fast`, `Normal`, `Slow` | 160, 280, and 400 milliseconds. |
+| `MotionCurve.CubicBezier(x1, y1, x2, y2)` | CSS cubic-bezier easing. X controls are clamped to 0–1. Y may leave that range. |
+
+`MotionTime` is a length you pass to `WithDuration`. The recipe still starts at 300 ms until you set one.
+
+```csharp
+m.FadeIn().WithDuration(MotionTime.Normal).WithEasing(MotionCurve.CubicBezier(0.2, 0.8, 0.2, 1))
+m.Opacity(0, 1).WithDuration(280).WithRate(1.5)
+m.FadeIn().WithReduceMotion(true)
+```
+
+`MotionPreferences.ReduceMotion` is the app-wide switch. `null` reads the platform: Reduce Motion on iOS and Mac Catalyst, animator duration scale `0` on Android, and animations disabled on Windows. A recipe's `WithReduceMotion` wins. Playback jumps to the end of that run and does not continue a repeat or a yoyo.
+
+Live players share one 16 ms clock. A manual clock, used by tests, stays on `Tick`.
 
 On a recipe whose tracks all span the full motion, `WithDuration` replaces the length. Keyframe offsets are fractions of that length, so they stretch with it.
 
@@ -780,16 +810,18 @@ The parameterless constructor is `Default`.
 
 ```csharp
 m.Scale(1, 1.16).WithSpring(Spring.Snappy)
-m.TranslateX(0, 40).WithSpring(new Spring(220, 18, 1))
+m.TranslateX(0, 40).WithSpring(new Spring(220, 18, 1), velocity: 4)
+m.Opacity(0, 1).Settle(Spring.Snappy).TranslateX(0, 40).WithDuration(280)
 ```
 
 | Member | Role |
 |---|---|
-| `WithSpring(Spring spring)` | Play this recipe with that spring. |
+| `WithSpring(Spring spring, double velocity = 0)` | Play this recipe with that spring. `velocity` is progress units per second at the start of a forward or reverse. |
+| `Settle(Spring spring, double velocity = 0)` | Spring each track added so far. Tracks added after this call stay on the duration clock. |
 
-`WithSpring` is mutually exclusive with `WithDuration` and with `Stagger`. A debug build asserts if you combine them.
+`WithSpring` is mutually exclusive with `WithDuration`, `Stagger`, and `Settle`. A debug build asserts if you combine them. `Settle` keeps the duration clock for every track that does not have a spring. The run finishes when those tracks are done and every spring has started and settled. A recipe whose tracks are all springs finishes when they settle, without waiting out the rest of the duration. A spring starts when its window opens, so stagger still delays it.
 
-The integrator is semi-implicit Euler. The step is clamped to 1/30 of a second. `Progress` is the spring position clamped to 0–1. The spring settles when position and velocity are both within `0.002` of rest, or after 8 seconds, whichever comes first. A settled forward pass then honors `Repeat` and `Yoyo`.
+The integrator is semi-implicit Euler. The step is clamped to 1/30 of a second. `Progress` for `WithSpring` is the spring position clamped to 0–1. The spring settles when position and velocity are both within `0.002` of rest, or after 8 seconds, whichever comes first. A settled forward pass then honors `Repeat` and `Yoyo`. Seek and a finished run leave velocity at 0.
 
 `And` keeps the right-hand spring when the right-hand motion has one.
 
@@ -819,11 +851,11 @@ Motion.Bind(
 
 | Member | Role |
 |---|---|
-| `Path(PathGeometry geometry, double from = 0, double to = 1)` | Move along `geometry`. `from` and `to` are fractions of the path length. |
+| `Path(PathGeometry geometry, double from = 0, double to = 1, bool orient = false)` | Move along `geometry`. `from` and `to` are fractions of the path length. `orient` also writes `Rotation` from the tangent. |
 
 `from` and `to` are clamped to 0–1. A non-finite `from` becomes 0. A non-finite `to` becomes 1. `geometry` must not be null.
 
-The sampler flattens lines, polylines, quadratic Béziers, cubic Béziers, and elliptical arcs. A degenerate arc (a radius that collapses) becomes a straight line. The first `Forward` writes the point at `from`.
+The sampler flattens lines, polylines, quadratic Béziers, cubic Béziers, and elliptical arcs. A degenerate arc (a radius that collapses) becomes a straight line. The first `Forward` writes the point at `from`. With `orient: true` that same frame writes `Rotation` in clockwise degrees from the positive X axis, matching a Y-down coordinate system. `orient` defaults to false, so an existing path does not start rotating.
 
 Stagger delays when each target starts walking the path. Keyframes along a path are a sequence of `Then` segments, each with its own geometry.
 
