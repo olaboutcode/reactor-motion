@@ -42,7 +42,7 @@ sealed class HomePage : Component
         Row("Stagger grid", () => PageNavigation.Push<StaggerGridPage>(), ink),
         Row("Scrub", () => PageNavigation.Push<MotionScrubPage>(), ink),
         Row("Color HSV vs RGB", () => PageNavigation.Push<MotionColorPage>(), ink),
-        Row("Timeline seek", () => PageNavigation.Push<MotionTimelinePage>(), ink),
+        Row("Timeline", () => PageNavigation.Push<MotionTimelinePage>(), ink),
         Row("Path", () => PageNavigation.Push<MotionPathPage>(), ink),
         Row("Matrix", () => PageNavigation.Push<MotionTransformPage>(), ink),
         Row("Enter / exit", () => PageNavigation.Push<MotionPresencePage>(), ink),

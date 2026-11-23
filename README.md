@@ -880,7 +880,46 @@ player.Seek("pulse");
 
 The intro uses the timeline's 280 ms and `CubicOut`. The pulse set its own 200 ms, so it stays 200 ms. `delay` waits before the whole timeline. A beat's own `WithDelay` stays a gap before that beat.
 
-`duration` is the default beat length, not the finished timeline. The timeline grows as you add beats. The same defaults can be passed for repeat, yoyo, rate, reduce-motion, stagger, color space, perspective, spring, and pose. A spring ignores `duration` and `stagger`.
+`duration` is the default beat length, not the finished timeline. The timeline grows as you add beats. The same call also takes repeat, yoyo, rate, reduce-motion, stagger, color space, perspective, spring, spring velocity, and pose.
+
+`Add` at a time overlaps that beat with whatever is already playing. The turn below starts 140 ms into the slide. Both beats use the 320 ms default.
+
+```csharp
+Motion.Timeline(duration: 320, easing: Easing.CubicOut)
+    .Add(Motion.Define(m => m.TranslateX(0, 72)), id: "slide")
+    .Add(Motion.Define(m => m.Rotate(0, 24)), at: 140, id: "turn");
+```
+
+The timeline can wait, and a beat can wait again before it moves. The fade uses the 280 ms default. The slide keeps that default and starts 200 ms after the fade ends.
+
+```csharp
+Motion.Timeline(duration: 280, easing: Easing.CubicOut, delay: 360)
+    .Add(Motion.Define(m => m.FadeIn()))
+    .Then(Motion.Define(m => m.TranslateX(0, 64).WithDelay(200)));
+```
+
+`yoyo` plays the finished timeline backward after the forward pass. `repeat` counts those cycles. A cycle with `yoyo` is forward, then back.
+
+```csharp
+Motion.Timeline(duration: 420, easing: Easing.CubicInOut, yoyo: true)
+    .Add(Motion.Define(m => m.TranslateX(0, 80)));
+```
+
+`stagger` delays each bound view. The recipe is still one timeline. The second view starts 90 ms after the first, and the third 90 ms after the second.
+
+```csharp
+Motion.Timeline(duration: 320, easing: Easing.CubicOut, stagger: new Stagger(90))
+    .Add(Motion.Define(m => m.FadeIn().TranslateY(16, 0)));
+```
+
+A spring replaces the duration clock and ignores `duration` and `stagger`. It plays every track from the same progress, so beats on a sprung timeline run together.
+
+```csharp
+Motion.Timeline(spring: Spring.Gentle, springVelocity: 2)
+    .Add(Motion.Define(m => m.TranslateX(0, 80).Scale(1, 1.12)));
+```
+
+The first beat can also be the argument. `WithDuration` and `WithEasing` afterwards do the same work as the defaults above.
 
 ```csharp
 Motion.Timeline(m => m.FadeIn().SlideIn(SlideFrom.Left, 48), "intro")
@@ -888,8 +927,6 @@ Motion.Timeline(m => m.FadeIn().SlideIn(SlideFrom.Left, 48), "intro")
     .WithDuration(280)
     .WithEasing(Easing.CubicOut);
 ```
-
-That form puts the first beat in the call. `WithDuration` and `WithEasing` afterwards do the same work as the defaults above.
 
 | Member | Role |
 |---|---|
@@ -1023,7 +1060,7 @@ A posed replacement still receives the spring speed of the properties it takes. 
 
 ## Samples
 
-`samples/Sample` is a MauiReactor gallery. Home lists the playground, stagger, scrub, color spaces, timeline seek, path (Bézier + arc), matrix (turn and tilt), enter / exit, poses, drag, and collection. On the poses page, Play springs two cards toward an outline. Halfway, Pose comes back from the live position and keeps the spring speed. Snap jumps onto the outline, then comes back. On the drag page, one card follows the finger along a lane and springs to the nearer end. Another moves across a board and springs to the nearest corner. Both keep the speed of the flick. On the collection page, adding, removing, or moving an item plays the move on the items that stay. A removed item fades where it left. The items sit in a vertical stack.
+`samples/Sample` is a MauiReactor gallery. Home lists the playground, stagger, scrub, color spaces, timeline, path (Bézier + arc), matrix (turn and tilt), enter / exit, poses, drag, and collection. The timeline page plays a sequence with seek, an overlap, a hold, a yoyo, a stagger, and a spring. On the poses page, Play springs two cards toward an outline. Halfway, Pose comes back from the live position and keeps the spring speed. Snap jumps onto the outline, then comes back. On the drag page, one card follows the finger along a lane and springs to the nearer end. Another moves across a board and springs to the nearest corner. Both keep the speed of the flick. On the collection page, adding, removing, or moving an item plays the move on the items that stay. A removed item fades where it left. The items sit in a vertical stack.
 
 ## Building
 
