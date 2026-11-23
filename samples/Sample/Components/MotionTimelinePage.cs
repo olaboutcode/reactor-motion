@@ -56,11 +56,9 @@ sealed class MotionTimelinePage : Component
         _player?.Dispose();
         ApplyRest();
         _player = Motion.Bind(
-            Motion
-                .Timeline(m => m.FadeIn().SlideIn(SlideFrom.Left, 48), "intro")
-                .Then(m => m.Scale(1, 1.12).WithDuration(200), "pulse")
-                .WithDuration(280)
-                .WithEasing(Easing.CubicOut),
+            Motion.Timeline(duration: 280, easing: Easing.CubicOut)
+                .Add(Motion.Define(m => m.FadeIn().SlideIn(SlideFrom.Left, 48)), id: "intro")
+                .Then(Motion.Define(m => m.Scale(1, 1.12).WithDuration(200)), "pulse"),
             _box);
     }
 

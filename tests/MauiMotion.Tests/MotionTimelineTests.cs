@@ -406,4 +406,80 @@ public sealed class MotionTimelineTests
         clock.Tick(100);
         Assert.Equal(0, box.Opacity, 3);
     }
+
+    [Fact]
+    public void Timeline_defaults_fill_beats_that_did_not_set_them()
+    {
+        var box = new BoxView { Opacity = 0, TranslationX = 0 };
+        var clock = new MotionClock(manual: true);
+        var motion = Motion.Timeline(duration: 200, easing: Easing.Linear, delay: 40)
+            .Add(Motion.Define(m => m.Opacity(0, 1)), id: "intro")
+            .Then(Motion.Define(m => m.TranslateX(0, 40).WithDuration(100).WithEasing(Easing.CubicOut)));
+
+        Assert.Equal(40u, motion.Delay);
+        Assert.Equal(300u, motion.Duration);
+        var player = MotionPlayer.Create(motion, [box], clock);
+        _ = player.ForwardAsync();
+        clock.Tick(40);
+        Assert.Equal(0, box.Opacity, 3);
+        clock.Tick(100);
+        Assert.Equal(0.5, box.Opacity, 3);
+        Assert.Equal(0, box.TranslationX, 3);
+        clock.Tick(100);
+        Assert.Equal(1, box.Opacity, 3);
+        Assert.Equal(0, box.TranslationX, 3);
+        clock.Tick(100);
+        Assert.Equal(40, box.TranslationX, 3);
+    }
+
+    [Fact]
+    public void Timeline_stores_the_playback_defaults()
+    {
+        var motion = Motion.Timeline(
+            repeat: 3,
+            yoyo: true,
+            rate: 2,
+            reduceMotion: true,
+            stagger: new Stagger(40),
+            colorSpace: ColorSpace.Rgb,
+            perspective: 0.001,
+            pose: true);
+
+        Assert.Equal(0u, motion.Duration);
+        Assert.Equal(3, motion.RepeatCount);
+        Assert.True(motion.YoyoEnabled);
+        Assert.Equal(2, motion.Rate);
+        Assert.Equal(true, motion.ReduceMotion);
+        Assert.Equal(new Stagger(40), motion.StaggerSpec);
+        Assert.Equal(ColorSpace.Rgb, motion.ColorSpace);
+        Assert.Equal(0.001, motion.PerspectiveEntry);
+        Assert.True(motion.Pose);
+
+        var sprung = Motion.Timeline(spring: Spring.Gentle, springVelocity: 2);
+        Assert.Equal(Spring.Gentle, sprung.Spring);
+        Assert.Equal(2, sprung.SpringVelocity);
+        Assert.Null(sprung.StaggerSpec);
+    }
+
+    [Fact]
+    public void Timeline_duration_before_the_beats_still_restretches()
+    {
+        var motion = Motion.Timeline(duration: 100)
+            .Add(m => m.FadeIn())
+            .Then(m => m.FadeOut())
+            .WithDuration(40);
+
+        Assert.Equal(80u, motion.Duration);
+    }
+
+    [Fact]
+    public void Timeline_with_duration_on_an_empty_timeline_sets_the_beat_default()
+    {
+        var motion = Motion.Timeline()
+            .WithDuration(180)
+            .Add(m => m.FadeIn())
+            .Then(m => m.FadeOut().WithDuration(40));
+
+        Assert.Equal(220u, motion.Duration);
+    }
 }

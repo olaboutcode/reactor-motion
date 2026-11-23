@@ -48,6 +48,7 @@ public sealed class Motion
     readonly bool _easingSet;
     readonly bool _pose;
     readonly bool _place;
+    readonly uint? _beatDuration;
     readonly IReadOnlyList<TimelineBeat> _beats;
 
     Motion(
@@ -70,7 +71,8 @@ public sealed class Motion
         double springVelocity = 0,
         bool? reduceMotion = null,
         bool pose = false,
-        bool place = false)
+        bool place = false,
+        uint? beatDuration = null)
     {
         Duration = duration;
         Easing = easing;
@@ -92,6 +94,7 @@ public sealed class Motion
         ReduceMotion = reduceMotion;
         _pose = pose;
         _place = place;
+        _beatDuration = beatDuration;
     }
 
     /// <summary>
@@ -163,7 +166,9 @@ public sealed class Motion
     /// <summary>
     /// Sets the length in milliseconds.
     /// A full-span recipe replaces <see cref="Duration"/>.
-    /// On a <see cref="Timeline"/> with several beats, each beat that did not call
+    /// On an empty timeline, whose <see cref="Duration"/> is still 0, this is the
+    /// default beat length and <see cref="Duration"/> stays 0.
+    /// On a timeline with several beats, each beat that did not call
     /// <see cref="WithDuration"/> itself takes this length and the windows are rebuilt.
     /// A beat that called <see cref="WithDuration"/> keeps its length.
     /// Any other windowed recipe ignores a shorter value and pads the end when the value is longer.
@@ -173,6 +178,11 @@ public sealed class Motion
     {
         if (_spring is not null)
             System.Diagnostics.Debug.Assert(false, "WithDuration is ignored when WithSpring is set.");
+
+        // A Timeline(configure) recipe also has no beats until the next Add.
+        // Only the empty overload leaves Duration at 0 with duration unset.
+        if (_timeline && _beats.Count == 0 && _tracks.Count == 0 && Duration == 0 && !_durationSet)
+            return _beatDuration == milliseconds ? this : Copy(beatDuration: milliseconds, setBeatDuration: true);
 
         if (_timeline && _beats.Count > 1)
             return RestretchBeats(milliseconds);
@@ -899,6 +909,71 @@ public sealed class Motion
         => configure(None);
 
     /// <summary>
+    /// Empty timeline. <paramref name="duration"/> and <paramref name="easing"/> apply to
+    /// each beat that did not set its own. <paramref name="delay"/> waits before the
+    /// whole timeline. <see cref="Add(Motion, uint, string?)"/> and
+    /// <see cref="Then(Motion, string?)"/> place the beats.
+    /// </summary>
+    /// <remarks>
+    /// <paramref name="duration"/> is not the finished length. The timeline grows as beats are added.
+    /// The first <see cref="Then(Motion, string?)"/> still starts at 0.
+    /// A beat that calls <see cref="WithDuration"/> or <see cref="WithEasing"/> keeps that value.
+    /// A beat's own <see cref="WithDelay"/> stays a gap before that beat.
+    /// <paramref name="repeat"/>, <paramref name="yoyo"/>, <paramref name="rate"/>,
+    /// <paramref name="reduceMotion"/>, <paramref name="stagger"/>, <paramref name="colorSpace"/>,
+    /// <paramref name="perspective"/>, <paramref name="spring"/>, and <paramref name="pose"/>
+    /// belong to the timeline. <paramref name="duration"/> is ignored when
+    /// <paramref name="spring"/> is set. <paramref name="stagger"/> is ignored then too.
+    /// </remarks>
+    public static Motion Timeline(
+        uint? duration = null,
+        Easing? easing = null,
+        uint delay = 0,
+        int repeat = 1,
+        bool yoyo = false,
+        double rate = 1,
+        bool? reduceMotion = null,
+        Stagger? stagger = null,
+        ColorSpace colorSpace = ColorSpace.Hsv,
+        double? perspective = null,
+        Spring? spring = null,
+        double springVelocity = 0,
+        bool pose = false)
+    {
+        if (spring is not null && duration is not null)
+            System.Diagnostics.Debug.Assert(false, "Timeline duration is ignored when spring is set.");
+        if (spring is not null && stagger is not null)
+            System.Diagnostics.Debug.Assert(false, "Timeline stagger is ignored when spring is set.");
+        if (double.IsNaN(rate) || double.IsInfinity(rate) || rate < 0)
+            rate = 0;
+        if (perspective is double entry && (double.IsNaN(entry) || double.IsInfinity(entry)))
+            perspective = 0;
+
+        var beatDuration = spring is null ? duration : null;
+        return None.Copy(
+            timeline: true,
+            duration: 0,
+            delay: delay,
+            easing: easing ?? Timing.MotionEasing,
+            easingSet: easing is not null,
+            repeat: repeat == 0 ? 1 : repeat,
+            yoyo: yoyo,
+            rate: rate,
+            reduceMotion: reduceMotion,
+            setReduceMotion: reduceMotion is not null,
+            stagger: spring is null ? stagger : null,
+            colorSpace: colorSpace,
+            spring: spring,
+            setSpring: spring is not null,
+            springVelocity: spring is null ? 0 : SanitizeVelocity(springVelocity),
+            perspective: perspective,
+            setPerspective: perspective is not null,
+            pose: pose,
+            beatDuration: beatDuration,
+            setBeatDuration: beatDuration is not null);
+    }
+
+    /// <summary>
     /// First beat of a timeline. <paramref name="configure"/> receives an empty motion.
     /// Pass <paramref name="id"/> to name that beat for <see cref="MotionPlayer.Seek(string)"/>.
     /// Further beats are <see cref="Then(Func{Motion, Motion}, string?)"/> and
@@ -1180,7 +1255,9 @@ public sealed class Motion
         bool? reduceMotion = null,
         bool setReduceMotion = false,
         bool? pose = null,
-        bool? place = null)
+        bool? place = null,
+        uint? beatDuration = null,
+        bool setBeatDuration = false)
         => new(
             duration ?? Duration,
             easing ?? Easing,
@@ -1201,7 +1278,8 @@ public sealed class Motion
             springVelocity ?? (setSpring ? 0 : SpringVelocity),
             setReduceMotion ? reduceMotion : ReduceMotion,
             pose ?? _pose,
-            place ?? _place);
+            place ?? _place,
+            setBeatDuration ? beatDuration : _beatDuration);
 
     static double SanitizeVelocity(double velocity)
         => double.IsNaN(velocity) || double.IsInfinity(velocity) ? 0 : velocity;
@@ -1410,7 +1488,7 @@ public sealed class Motion
         var beats = _beats;
         var rootSpans = _spans;
         var trackBeats = _timeline && (beats.Count > 0 || tracks.Count == 0 || AllFullSpan(tracks));
-        if (trackBeats && beats.Count == 0)
+        if (trackBeats && beats.Count == 0 && tracks.Count > 0)
         {
             tracks = WithBeat(tracks, 0);
             beats = [new TimelineBeat(0, 0, false, 0, Duration, _durationSet, 0)];
@@ -1418,7 +1496,7 @@ public sealed class Motion
         }
 
         var childStart = at + child.Delay;
-        var childSpan = child.Duration;
+        var childSpan = child._durationSet || _beatDuration is not uint beatLength ? child.Duration : beatLength;
         var newSpan = Math.Max(Duration, childStart + childSpan);
         var existing = Duration == newSpan ? tracks : Rebase(tracks, Duration, newSpan);
         var shifted = Shift(childTracks, childStart, childSpan, newSpan);

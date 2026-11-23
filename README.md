@@ -395,6 +395,7 @@ player.Forward();
 | Member | Role |
 |---|---|
 | `Define(Func<Motion, Motion> configure)` | `configure(Motion.None)`. |
+| `Timeline(uint? duration = null, Easing? easing = null, uint delay = 0, ...)` | Empty timeline. Duration and easing are defaults for beats that did not set their own. |
 | `Timeline(Func<Motion, Motion> configure, string? id = null)` | First beat of a timeline. `id` names it for `Seek`. |
 | `Bind(Motion motion, VisualElement target)` | Bind one view. Does not start. |
 | `Bind(Motion motion, IEnumerable<VisualElement> targets)` | Bind many views. Does not start. The order is the stagger order. |
@@ -867,23 +868,32 @@ Sequential steps in milliseconds belong on `Then`, not on `Keyframes`.
 
 ### Timeline
 
-`Motion.Timeline` is the first beat. `Then` appends a beat. `Add` places one at a time. Each callback receives an empty motion.
+`Motion.Timeline` can start empty, with the defaults for every beat, or it can open on the first beat. `Then` appends a beat. `Add` places one at a time. Each callback receives an empty motion. `Motion.Define` builds that same recipe.
 
 ```csharp
-var timeline = Motion.Timeline(
-        m => m.FadeIn().SlideIn(SlideFrom.Left, 48),
-        "intro")
-    .Then(m => m.Scale(1, 1.12).WithDuration(200), "pulse")
-    .WithDuration(280)
-    .WithEasing(Easing.CubicOut);
+var timeline = Motion.Timeline(duration: 280, easing: Easing.CubicOut, delay: 300)
+    .Add(Motion.Define(m => m.FadeIn().SlideIn(SlideFrom.Left, 48)), id: "intro")
+    .Then(Motion.Define(m => m.Scale(1, 1.12).WithDuration(200)), "pulse");
 
 player.Seek("pulse");
 ```
 
-The intro is 280 ms. The pulse set its own 200 ms, so it stays 200 ms. Both use `CubicOut` unless a beat calls `WithEasing`.
+The intro uses the timeline's 280 ms and `CubicOut`. The pulse set its own 200 ms, so it stays 200 ms. `delay` waits before the whole timeline. A beat's own `WithDelay` stays a gap before that beat.
+
+`duration` is the default beat length, not the finished timeline. The timeline grows as you add beats. The same defaults can be passed for repeat, yoyo, rate, reduce-motion, stagger, color space, perspective, spring, and pose. A spring ignores `duration` and `stagger`.
+
+```csharp
+Motion.Timeline(m => m.FadeIn().SlideIn(SlideFrom.Left, 48), "intro")
+    .Then(m => m.Scale(1, 1.12).WithDuration(200), "pulse")
+    .WithDuration(280)
+    .WithEasing(Easing.CubicOut);
+```
+
+That form puts the first beat in the call. `WithDuration` and `WithEasing` afterwards do the same work as the defaults above.
 
 | Member | Role |
 |---|---|
+| `Timeline(uint? duration = null, Easing? easing = null, uint delay = 0, int repeat = 1, bool yoyo = false, double rate = 1, bool? reduceMotion = null, Stagger? stagger = null, ColorSpace colorSpace = ColorSpace.Hsv, double? perspective = null, Spring? spring = null, double springVelocity = 0, bool pose = false)` | Empty timeline. `duration` and `easing` fill beats that did not set their own. The other arguments belong to the timeline. |
 | `Timeline(Func<Motion, Motion> configure, string? id = null)` | Builds the first beat. The result is a timeline, so a later `WithDuration` / `WithEasing` applies to every beat that did not set its own. |
 | `Then(Func<Motion, Motion> configure, string? id = null)` | Builds a beat and appends it after the current span. |
 | `Add(Func<Motion, Motion> configure, uint at = 0, string? id = null)` | Builds a beat and inserts it at `at` milliseconds. |
