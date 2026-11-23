@@ -7,5 +7,6 @@ public static class PhosphorIcons
 {
     public const string ArrowLeft = "phosphor_arrow_left";
     public const string CaretRight = "phosphor_caret_right";
+    public const string Gear = "phosphor_gear";
     public const string ShareNetwork = "phosphor_share_network";
 }

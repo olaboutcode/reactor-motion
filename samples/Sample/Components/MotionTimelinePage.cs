@@ -66,12 +66,14 @@ sealed class MotionTimelinePage : Component
                             Button("Play", () => _ = Play(_sequencePlayer, RestSequence)),
                             Button("Intro", () => _sequencePlayer?.Seek("intro")),
                             Button("Pulse", () => _sequencePlayer?.Seek("pulse"))),
+                        Rule(),
                         Label("Overlap")
                             .FontSize(16)
                             .HCenter(),
                         Caption("The slide is 320 ms. The turn starts 140 ms in."),
                         Lane(Colors.Teal, 72, box => _overlap = box, BindOverlap),
                         Actions(Button("Play", () => _ = Play(_overlapPlayer, RestOverlap))),
+                        Rule(),
                         Label("Box and image")
                             .FontSize(16)
                             .HCenter(),
@@ -98,18 +100,21 @@ sealed class MotionTimelinePage : Component
                         .Spacing(24)
                         .HCenter(),
                         Actions(Button("Play", () => _ = Play(_offsetPlayer, RestOffset))),
+                        Rule(),
                         Label("Hold")
                             .FontSize(16)
                             .HCenter(),
                         Caption("The timeline waits 360 ms. The slide waits another 200 ms after the fade."),
                         Lane(Colors.Coral, 64, box => _hold = box, BindHold),
                         Actions(Button("Play", () => _ = Play(_holdPlayer, RestHold))),
+                        Rule(),
                         Label("Yoyo")
                             .FontSize(16)
                             .HCenter(),
                         Caption("It moves across, then the same beat plays backward."),
                         Lane(Colors.MediumPurple, 80, box => _yoyo = box, BindYoyo),
                         Actions(Button("Play", () => _ = Play(_yoyoPlayer, RestYoyo))),
+                        Rule(),
                         Label("Stagger")
                             .FontSize(16)
                             .HCenter(),
@@ -121,6 +126,7 @@ sealed class MotionTimelinePage : Component
                             .Spacing(12)
                             .HCenter(),
                         Actions(Button("Play", () => _ = Play(_staggerPlayer, RestStagger))),
+                        Rule(),
                         Label("Spring")
                             .FontSize(16)
                             .HCenter(),
@@ -135,6 +141,13 @@ sealed class MotionTimelinePage : Component
             )
         )
         .HideNavigationBar();
+
+    static MauiReactor.BoxView Rule()
+        => BoxView()
+            .HeightRequest(1)
+            .HFill()
+            .Margin(0, 8, 0, 8)
+            .BackgroundColor(Colors.Gray.WithAlpha(0.35f));
 
     static MauiReactor.Label Caption(string text)
         => Label(text)
@@ -181,7 +194,8 @@ sealed class MotionTimelinePage : Component
                 .BackgroundColor(Colors.White)
                 .HCenter()
                 .VCenter(),
-            Image(PhosphorIcons.ShareNetwork, capture)
+            Image(capture)
+                .Source(PhosphorIcons.Gear + ".png")
                 .WidthRequest(40)
                 .HeightRequest(40)
                 .Aspect(Aspect.AspectFit)
