@@ -105,7 +105,7 @@ public sealed class Motion
 
     /// <summary>
     /// Milliseconds the player holds the from-pose before the tracks move.
-    /// Default is 0. A child delay passed to <see cref="Add(Motion, uint, string?)"/> or <see cref="And(Motion)"/>
+    /// Default is 0. A child delay passed to <see cref="Add(Motion, uint, string?, int?)"/> or <see cref="And(Motion)"/>
     /// is baked into that child's windows and is not this hold.
     /// </summary>
     public uint Delay { get; }
@@ -225,7 +225,7 @@ public sealed class Motion
     /// <summary>
     /// Hold the from-pose for <paramref name="milliseconds"/> before the tracks move.
     /// Does not change <see cref="Duration"/>. <c>0</c> clears a delay set earlier.
-    /// On a child of <see cref="Add(Motion, uint, string?)"/> or <see cref="And(Motion)"/>, this wait is baked into
+    /// On a child of <see cref="Add(Motion, uint, string?, int?)"/> or <see cref="And(Motion)"/>, this wait is baked into
     /// that child's windows. On the motion you bind, it is the player hold.
     /// </summary>
     public Motion WithDelay(uint milliseconds)
@@ -806,36 +806,39 @@ public sealed class Motion
     /// <c>max(current, at + child.Delay + child.Duration)</c>. This motion's own
     /// <see cref="Delay"/> stays the player hold. Duplicate <paramref name="id"/>
     /// values: last wins.
+    /// <paramref name="target"/> follows the arguments of Bind. <c>0</c> is the first view, <c>1</c> the second.
+    /// Null plays this beat on every bound view. A negative index throws.
     /// </summary>
-    public Motion Add(Motion child, uint at = 0, string? id = null)
-        => Add(child, at, id, followsEnd: false);
+    public Motion Add(Motion child, uint at = 0, string? id = null, int? target = null)
+        => Add(child, at, id, followsEnd: false, target);
 
     /// <summary>
     /// Builds <paramref name="configure"/> from an empty motion and places it at
-    /// <paramref name="at"/> milliseconds. Same window rules as <see cref="Add(Motion, uint, string?)"/>.
+    /// <paramref name="at"/> milliseconds. Same window rules as <see cref="Add(Motion, uint, string?, int?)"/>.
     /// </summary>
-    public Motion Add(Func<Motion, Motion> configure, uint at = 0, string? id = null)
+    public Motion Add(Func<Motion, Motion> configure, uint at = 0, string? id = null, int? target = null)
     {
         ArgumentNullException.ThrowIfNull(configure);
-        return Add(configure(None), at, id);
+        return Add(configure(None), at, id, target);
     }
 
     /// <summary>
     /// Appends <paramref name="next"/> after the current span. A delay on
     /// <paramref name="next"/> waits that much longer.
-    /// Use <see cref="Add(Motion, uint, string?)"/> to start at 0.
+    /// Use <see cref="Add(Motion, uint, string?, int?)"/> to start at 0.
+    /// <paramref name="target"/> follows the arguments of Bind. <c>0</c> is the first view, <c>1</c> the second.
     /// </summary>
-    public Motion Then(Motion next, string? id = null)
-        => Add(next, Duration, id, followsEnd: true);
+    public Motion Then(Motion next, string? id = null, int? target = null)
+        => Add(next, Duration, id, followsEnd: true, target);
 
     /// <summary>
     /// Builds <paramref name="configure"/> from an empty motion and appends it
-    /// after the current span. Same rules as <see cref="Then(Motion, string?)"/>.
+    /// after the current span. Same rules as <see cref="Then(Motion, string?, int?)"/>.
     /// </summary>
-    public Motion Then(Func<Motion, Motion> configure, string? id = null)
+    public Motion Then(Func<Motion, Motion> configure, string? id = null, int? target = null)
     {
         ArgumentNullException.ThrowIfNull(configure);
-        return Then(configure(None), id);
+        return Then(configure(None), id, target);
     }
 
     /// <summary>
@@ -911,12 +914,12 @@ public sealed class Motion
     /// <summary>
     /// Empty timeline. <paramref name="duration"/> and <paramref name="easing"/> apply to
     /// each beat that did not set its own. <paramref name="delay"/> waits before the
-    /// whole timeline. <see cref="Add(Motion, uint, string?)"/> and
-    /// <see cref="Then(Motion, string?)"/> place the beats.
+    /// whole timeline. <see cref="Add(Motion, uint, string?, int?)"/> and
+    /// <see cref="Then(Motion, string?, int?)"/> place the beats.
     /// </summary>
     /// <remarks>
     /// <paramref name="duration"/> is not the finished length. The timeline grows as beats are added.
-    /// The first <see cref="Then(Motion, string?)"/> still starts at 0.
+    /// The first <see cref="Then(Motion, string?, int?)"/> still starts at 0.
     /// A beat that calls <see cref="WithDuration"/> or <see cref="WithEasing"/> keeps that value.
     /// A beat's own <see cref="WithDelay"/> stays a gap before that beat.
     /// <paramref name="repeat"/>, <paramref name="yoyo"/>, <paramref name="rate"/>,
@@ -976,8 +979,8 @@ public sealed class Motion
     /// <summary>
     /// First beat of a timeline. <paramref name="configure"/> receives an empty motion.
     /// Pass <paramref name="id"/> to name that beat for <see cref="MotionPlayer.Seek(string)"/>.
-    /// Further beats are <see cref="Then(Func{Motion, Motion}, string?)"/> and
-    /// <see cref="Add(Func{Motion, Motion}, uint, string?)"/>.
+    /// Further beats are <see cref="Then(Func{Motion, Motion}, string?, int?)"/> and
+    /// <see cref="Add(Func{Motion, Motion}, uint, string?, int?)"/>.
     /// <see cref="WithDuration"/> then gives one length to every beat that did not set its own.
     /// <see cref="WithEasing"/> does the same for the curve.
     /// </summary>
@@ -1392,6 +1395,8 @@ public sealed class Motion
                 var prior = existing[j];
                 if (prior.Property != next.Property || prior.Semantic != next.Semantic)
                     continue;
+                if (prior.Target is int left && next.Target is int right && left != right)
+                    continue;
                 if (prior.Begin < next.End && next.Begin < prior.End)
                 {
                     System.Diagnostics.Debug.WriteLine(
@@ -1477,9 +1482,11 @@ public sealed class Motion
     static IReadOnlyList<NamedSpan> PutSpan(IReadOnlyList<NamedSpan> spans, NamedSpan next)
         => CompactSpans(ConcatSpans(spans, [next]));
 
-    Motion Add(Motion child, uint at, string? id, bool followsEnd)
+    Motion Add(Motion child, uint at, string? id, bool followsEnd, int? target = null)
     {
         ArgumentNullException.ThrowIfNull(child);
+        if (target is < 0)
+            throw new ArgumentOutOfRangeException(nameof(target));
         if (child._stagger is not null)
             System.Diagnostics.Debug.WriteLine("Motion.Add: nested Stagger is ignored (root only).");
 
@@ -1500,6 +1507,8 @@ public sealed class Motion
         var newSpan = Math.Max(Duration, childStart + childSpan);
         var existing = Duration == newSpan ? tracks : Rebase(tracks, Duration, newSpan);
         var shifted = Shift(childTracks, childStart, childSpan, newSpan);
+        if (target is int index)
+            shifted = WithTarget(shifted, index);
         var childSpans = ShiftSpans(child._spans, childStart, childSpan, newSpan);
         if (trackBeats)
         {
@@ -1792,6 +1801,15 @@ public sealed class Motion
         var copy = new MotionTrack[tracks.Count];
         for (var i = 0; i < tracks.Count; i++)
             copy[i] = tracks[i] with { BeatId = beatId };
+
+        return copy;
+    }
+
+    static MotionTrack[] WithTarget(IReadOnlyList<MotionTrack> tracks, int target)
+    {
+        var copy = new MotionTrack[tracks.Count];
+        for (var i = 0; i < tracks.Count; i++)
+            copy[i] = tracks[i] with { Target = target };
 
         return copy;
     }

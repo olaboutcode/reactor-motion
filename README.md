@@ -890,6 +890,16 @@ Motion.Timeline(duration: 320, easing: Easing.CubicOut)
     .Add(Motion.Define(m => m.Rotate(0, 24)), at: 140, id: "turn");
 ```
 
+`target` follows the arguments of `Bind`. `0` is the first view, `1` is the second. Any `VisualElement` can take either place. Below, the box slides for 300 ms and the image starts a 300 ms turn 100 ms later. Omit `target` and that beat plays on every bound view. A beat with a target ignores stagger.
+
+```csharp
+var timeline = Motion.Timeline(easing: Easing.CubicOut)
+    .Add(Motion.Define(m => m.TranslateX(0, 48).WithDuration(300)), target: 0)
+    .Add(Motion.Define(m => m.Rotate(0, 80).WithDuration(300)), at: 100, target: 1);
+
+timeline.Bind(box, image);
+```
+
 The timeline can wait, and a beat can wait again before it moves. The fade uses the 280 ms default. The slide keeps that default and starts 200 ms after the fade ends.
 
 ```csharp
@@ -932,13 +942,13 @@ Motion.Timeline(m => m.FadeIn().SlideIn(SlideFrom.Left, 48), "intro")
 |---|---|
 | `Timeline(uint? duration = null, Easing? easing = null, uint delay = 0, int repeat = 1, bool yoyo = false, double rate = 1, bool? reduceMotion = null, Stagger? stagger = null, ColorSpace colorSpace = ColorSpace.Hsv, double? perspective = null, Spring? spring = null, double springVelocity = 0, bool pose = false)` | Empty timeline. `duration` and `easing` fill beats that did not set their own. The other arguments belong to the timeline. |
 | `Timeline(Func<Motion, Motion> configure, string? id = null)` | Builds the first beat. The result is a timeline, so a later `WithDuration` / `WithEasing` applies to every beat that did not set its own. |
-| `Then(Func<Motion, Motion> configure, string? id = null)` | Builds a beat and appends it after the current span. |
-| `Add(Func<Motion, Motion> configure, uint at = 0, string? id = null)` | Builds a beat and inserts it at `at` milliseconds. |
+| `Then(Func<Motion, Motion> configure, string? id = null, int? target = null)` | Builds a beat and appends it after the current span. `target` picks one bound view. |
+| `Add(Func<Motion, Motion> configure, uint at = 0, string? id = null, int? target = null)` | Builds a beat and inserts it at `at` milliseconds. |
 | `And(Func<Motion, Motion> configure)` | Builds a recipe and plays it at the same time as the receiver. |
-| `Add(Motion child, uint at = 0, string? id = null)` | Inserts `child` at `at + child.Delay` milliseconds. Parent length becomes `max(current, at + child.Delay + child.Duration)`. The parent's own delay stays the player hold. |
-| `Then(Motion next, string? id = null)` | `Add(next, Duration, id)`. |
+| `Add(Motion child, uint at = 0, string? id = null, int? target = null)` | Inserts `child` at `at + child.Delay` milliseconds. Parent length becomes `max(current, at + child.Delay + child.Duration)`. The parent's own delay stays the player hold. `target` is the bind index. Null plays on every view. |
+| `Then(Motion next, string? id = null, int? target = null)` | `Add(next, Duration, id, target)`. |
 
-Children are flattened immediately. Their tracks are shifted in milliseconds and are not stretched. A nested `Stagger` is ignored. If two tracks write the same property in overlapping time, the later one wins and a debug build logs the overlap.
+Children are flattened immediately. Their tracks are shifted in milliseconds and are not stretched. A nested `Stagger` is ignored. If two tracks write the same property of the same view in overlapping time, the later one wins and a debug build logs the overlap.
 
 `id` records a named window as a fraction of the parent length. Duplicate ids keep the last one. `Seek(id)` and `TrySpan` read those windows. See [Seek](#seek).
 
@@ -1060,7 +1070,7 @@ A posed replacement still receives the spring speed of the properties it takes. 
 
 ## Samples
 
-`samples/Sample` is a MauiReactor gallery. Home lists the playground, stagger, scrub, color spaces, timeline, path (Bézier + arc), matrix (turn and tilt), enter / exit, poses, drag, and collection. The timeline page plays a sequence with seek, an overlap, a hold, a yoyo, a stagger, and a spring. On the poses page, Play springs two cards toward an outline. Halfway, Pose comes back from the live position and keeps the spring speed. Snap jumps onto the outline, then comes back. On the drag page, one card follows the finger along a lane and springs to the nearer end. Another moves across a board and springs to the nearest corner. Both keep the speed of the flick. On the collection page, adding, removing, or moving an item plays the move on the items that stay. A removed item fades where it left. The items sit in a vertical stack.
+`samples/Sample` is a MauiReactor gallery. Home lists the playground, stagger, scrub, color spaces, timeline, path (Bézier + arc), matrix (turn and tilt), enter / exit, poses, drag, and collection. The timeline page plays a sequence with seek, an overlap, a box and an image on one timeline, a hold, a yoyo, a stagger, and a spring. On the poses page, Play springs two cards toward an outline. Halfway, Pose comes back from the live position and keeps the spring speed. Snap jumps onto the outline, then comes back. On the drag page, one card follows the finger along a lane and springs to the nearer end. Another moves across a board and springs to the nearest corner. Both keep the speed of the flick. On the collection page, adding, removing, or moving an item plays the move on the items that stay. A removed item fades where it left. The items sit in a vertical stack.
 
 ## Building
 

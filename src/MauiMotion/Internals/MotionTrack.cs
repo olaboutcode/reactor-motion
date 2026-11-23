@@ -83,6 +83,11 @@ internal readonly record struct MotionTrack(
 
     /// <summary>When true, a path track also writes <see cref="VisualElement.Rotation"/> from the tangent.</summary>
     public bool Orient { get; init; }
+
+    /// <summary>
+    /// Index of the bound view this track plays on. Null plays on every bound view.
+    /// </summary>
+    public int? Target { get; init; }
 }
 
 /// <summary>

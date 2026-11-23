@@ -482,4 +482,61 @@ public sealed class MotionTimelineTests
 
         Assert.Equal(220u, motion.Duration);
     }
+
+    [Fact]
+    public void Timeline_target_plays_each_beat_on_its_view()
+    {
+        var slide = new BoxView { TranslationX = 0, ScaleX = 1, ScaleY = 1 };
+        var grow = new BoxView { TranslationX = 0, ScaleX = 1, ScaleY = 1 };
+        var clock = new MotionClock(manual: true);
+        var motion = Motion.Timeline(easing: Easing.Linear)
+            .Add(m => m.TranslateX(0, 300).WithDuration(300), target: 0)
+            .Add(m => m.Scale(1, 2).WithDuration(300), at: 100, target: 1);
+
+        Assert.Equal(400u, motion.Duration);
+        var player = MotionPlayer.Create(motion, [slide, grow], clock);
+        _ = player.ForwardAsync();
+
+        clock.Tick(100);
+        Assert.Equal(100, slide.TranslationX, 3);
+        Assert.Equal(1, slide.ScaleX, 3);
+        Assert.Equal(0, grow.TranslationX, 3);
+        Assert.Equal(1, grow.ScaleX, 3);
+        Assert.Equal(1, grow.ScaleY, 3);
+
+        clock.Tick(150);
+        Assert.Equal(250, slide.TranslationX, 3);
+        Assert.Equal(1.5, grow.ScaleX, 3);
+        Assert.Equal(1.5, grow.ScaleY, 3);
+        Assert.Equal(1, slide.ScaleX, 3);
+
+        clock.Tick(150);
+        Assert.Equal(300, slide.TranslationX, 3);
+        Assert.Equal(2, grow.ScaleX, 3);
+        Assert.Equal(0, grow.TranslationX, 3);
+    }
+
+    [Fact]
+    public void Timeline_without_a_target_plays_on_every_view()
+    {
+        var first = new BoxView { Opacity = 0 };
+        var second = new BoxView { Opacity = 0 };
+        var clock = new MotionClock(manual: true);
+        var motion = Motion.Timeline(duration: 100, easing: Easing.Linear)
+            .Add(m => m.Opacity(0, 1));
+        var player = MotionPlayer.Create(motion, [first, second], clock);
+
+        _ = player.ForwardAsync();
+        clock.Tick(50);
+        Assert.Equal(0.5, first.Opacity, 3);
+        Assert.Equal(0.5, second.Opacity, 3);
+    }
+
+    [Fact]
+    public void Timeline_target_rejects_a_negative_index()
+    {
+        var timeline = Motion.Timeline();
+        Assert.Throws<ArgumentOutOfRangeException>(() =>
+            timeline.Add(m => m.FadeIn(), target: -1));
+    }
 }

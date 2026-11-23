@@ -1,7 +1,7 @@
 namespace Sample.Components;
 
 /// <summary>
-/// Sequence, overlap, hold, yoyo, stagger, and a spring, each built as a timeline.
+/// Sequence, overlap, a box and an image on one timeline, hold, yoyo, stagger, and a spring.
 /// </summary>
 sealed class MotionTimelinePage : Component
 {
@@ -9,6 +9,8 @@ sealed class MotionTimelinePage : Component
 
     MauiControls.BoxView? _sequence;
     MauiControls.BoxView? _overlap;
+    MauiControls.BoxView? _offsetBox;
+    MauiControls.Image? _offsetImage;
     MauiControls.BoxView? _hold;
     MauiControls.BoxView? _yoyo;
     MauiControls.BoxView? _spring;
@@ -18,6 +20,7 @@ sealed class MotionTimelinePage : Component
 
     MotionPlayer? _sequencePlayer;
     MotionPlayer? _overlapPlayer;
+    MotionPlayer? _offsetPlayer;
     MotionPlayer? _holdPlayer;
     MotionPlayer? _yoyoPlayer;
     MotionPlayer? _staggerPlayer;
@@ -27,12 +30,14 @@ sealed class MotionTimelinePage : Component
     {
         _sequencePlayer?.Dispose();
         _overlapPlayer?.Dispose();
+        _offsetPlayer?.Dispose();
         _holdPlayer?.Dispose();
         _yoyoPlayer?.Dispose();
         _staggerPlayer?.Dispose();
         _springPlayer?.Dispose();
         _sequencePlayer = null;
         _overlapPlayer = null;
+        _offsetPlayer = null;
         _holdPlayer = null;
         _yoyoPlayer = null;
         _staggerPlayer = null;
@@ -67,6 +72,32 @@ sealed class MotionTimelinePage : Component
                         Caption("The slide is 320 ms. The turn starts 140 ms in."),
                         Lane(Colors.Teal, 72, box => _overlap = box, BindOverlap),
                         Actions(Button("Play", () => _ = Play(_overlapPlayer, RestOverlap))),
+                        Label("Box and image")
+                            .FontSize(16)
+                            .HCenter(),
+                        Caption("The box slides for 300 ms. The image starts a 300 ms turn 100 ms later."),
+                        HStack(
+                            VStack(
+                                Label("Box")
+                                    .FontSize(12)
+                                    .TextColor(Colors.SteelBlue)
+                                    .HCenter(),
+                                Lane(Colors.SteelBlue, 48, box => _offsetBox = box, BindOffset)
+                            )
+                            .Spacing(6),
+                            VStack(
+                                Label("Image")
+                                    .FontSize(12)
+                                    .TextColor(Colors.SteelBlue)
+                                    .HCenter(),
+                                Picture(image => _offsetImage = image, BindOffset)
+                            )
+                            .Spacing(6)
+                            .VCenter()
+                        )
+                        .Spacing(24)
+                        .HCenter(),
+                        Actions(Button("Play", () => _ = Play(_offsetPlayer, RestOffset))),
                         Label("Hold")
                             .FontSize(16)
                             .HCenter(),
@@ -141,6 +172,24 @@ sealed class MotionTimelinePage : Component
                 .VCenter())
             .HCenter();
 
+    static MauiReactor.Grid Picture(Action<MauiControls.Image?> capture, Action loaded)
+        => Grid("100", "88",
+            BoxView()
+                .WidthRequest(Card)
+                .HeightRequest(Card)
+                .CornerRadius(14)
+                .BackgroundColor(Colors.White)
+                .HCenter()
+                .VCenter(),
+            Image(PhosphorIcons.ShareNetwork, capture)
+                .WidthRequest(40)
+                .HeightRequest(40)
+                .Aspect(Aspect.AspectFit)
+                .HCenter()
+                .VCenter()
+                .OnLoaded(loaded))
+            .HCenter();
+
     static MauiReactor.Grid Chip(Color color, Action<MauiControls.BoxView?> capture, Action loaded)
         => Grid("88", "64",
             Mark(color).HCenter().VCenter(),
@@ -172,6 +221,11 @@ sealed class MotionTimelinePage : Component
             .Add(Motion.Define(m => m.TranslateX(0, 72)), id: "slide")
             .Add(Motion.Define(m => m.Rotate(0, 24)), at: 140, id: "turn");
 
+    static Motion OffsetMotion()
+        => Motion.Timeline(easing: Easing.CubicOut)
+            .Add(Motion.Define(m => m.TranslateX(0, 48).WithDuration(300)), id: "slide", target: 0)
+            .Add(Motion.Define(m => m.Rotate(0, 80).WithDuration(300)), at: 100, id: "turn", target: 1);
+
     static Motion HoldMotion()
         => Motion.Timeline(duration: 280, easing: Easing.CubicOut, delay: 360)
             .Add(Motion.Define(m => m.FadeIn()))
@@ -195,7 +249,7 @@ sealed class MotionTimelinePage : Component
             return;
         _sequencePlayer?.Dispose();
         RestSequence();
-        _sequencePlayer = Motion.Bind(SequenceMotion(), _sequence);
+        _sequencePlayer = SequenceMotion().Bind(_sequence);
     }
 
     void BindOverlap()
@@ -204,7 +258,16 @@ sealed class MotionTimelinePage : Component
             return;
         _overlapPlayer?.Dispose();
         RestOverlap();
-        _overlapPlayer = Motion.Bind(OverlapMotion(), _overlap);
+        _overlapPlayer = OverlapMotion().Bind(_overlap);
+    }
+
+    void BindOffset()
+    {
+        if (_offsetBox is null || _offsetImage is null)
+            return;
+        _offsetPlayer?.Dispose();
+        RestOffset();
+        _offsetPlayer = OffsetMotion().Bind([_offsetBox, _offsetImage]);
     }
 
     void BindHold()
@@ -213,7 +276,7 @@ sealed class MotionTimelinePage : Component
             return;
         _holdPlayer?.Dispose();
         RestHold();
-        _holdPlayer = Motion.Bind(HoldMotion(), _hold);
+        _holdPlayer = HoldMotion().Bind(_hold);
     }
 
     void BindYoyo()
@@ -222,7 +285,7 @@ sealed class MotionTimelinePage : Component
             return;
         _yoyoPlayer?.Dispose();
         RestYoyo();
-        _yoyoPlayer = Motion.Bind(YoyoMotion(), _yoyo);
+        _yoyoPlayer = YoyoMotion().Bind(_yoyo);
     }
 
     void BindStagger()
@@ -231,7 +294,7 @@ sealed class MotionTimelinePage : Component
             return;
         _staggerPlayer?.Dispose();
         RestStagger();
-        _staggerPlayer = Motion.Bind(StaggerMotion(), [_stagger0, _stagger1, _stagger2]);
+        _staggerPlayer = StaggerMotion().Bind([_stagger0, _stagger1, _stagger2]);
     }
 
     void BindSpring()
@@ -240,7 +303,7 @@ sealed class MotionTimelinePage : Component
             return;
         _springPlayer?.Dispose();
         RestSpring();
-        _springPlayer = Motion.Bind(SpringMotion(), _spring);
+        _springPlayer = SpringMotion().Bind(_spring);
     }
 
     static async Task Play(MotionPlayer? player, Action rest)
@@ -269,6 +332,15 @@ sealed class MotionTimelinePage : Component
             return;
         _overlap.TranslationX = 0;
         _overlap.Rotation = 0;
+    }
+
+    void RestOffset()
+    {
+        if (_offsetBox is not null)
+            _offsetBox.TranslationX = 0;
+        if (_offsetImage is null)
+            return;
+        _offsetImage.Rotation = 0;
     }
 
     void RestHold()

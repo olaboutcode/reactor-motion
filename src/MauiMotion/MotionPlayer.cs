@@ -311,7 +311,7 @@ public sealed class MotionPlayer : IDisposable
 
     /// <summary>
     /// Linear 0–1 of <see cref="Duration"/> (player span after stagger) for a
-    /// named <see cref="Motion.Add(Motion, uint, string?)"/> / <see cref="Motion.Then(Motion, string?)"/> child.
+    /// named <see cref="Motion.Add(Motion, uint, string?, int?)"/> / <see cref="Motion.Then(Motion, string?, int?)"/> child.
     /// </summary>
     public bool TrySpan(string id, out double begin, out double end)
     {
@@ -1031,15 +1031,19 @@ public sealed class MotionPlayer : IDisposable
         if (targets.Length == 0 || motion.Tracks.Count == 0)
             return [];
 
+        WarnTargets(motion.Tracks, targets.Length);
         var list = new List<TrackRuntime>(targets.Length * motion.Tracks.Count);
         for (var i = 0; i < targets.Length; i++)
         {
             var target = targets[i];
-            var delay = motion.StaggerSpec is { } stagger && targets.Length > 1 && parentSpan > 0
+            var staggerDelay = motion.StaggerSpec is { } stagger && targets.Length > 1 && parentSpan > 0
                 ? StaggerEval.DelayMs(i, targets.Length, stagger)
                 : 0;
             foreach (var track in motion.Tracks)
             {
+                if (track.Target is int only && only != i)
+                    continue;
+                var delay = track.Target is null ? staggerDelay : 0;
                 var begin = playerSpan == 0 ? 0 : (delay + track.Begin * parentSpan) / playerSpan;
                 var end = playerSpan == 0 ? 1 : (delay + track.End * parentSpan) / playerSpan;
                 if (track.Semantic == SemanticTrack.Transform)
@@ -1104,6 +1108,18 @@ public sealed class MotionPlayer : IDisposable
         }
 
         return [.. list];
+    }
+
+    static void WarnTargets(IReadOnlyList<MotionTrack> tracks, int count)
+    {
+        for (var i = 0; i < tracks.Count; i++)
+        {
+            if (tracks[i].Target is int index && (uint)index >= (uint)count)
+            {
+                System.Diagnostics.Debug.Assert(false, "Timeline target is outside the bound views.");
+                return;
+            }
+        }
     }
 
     static BindableProperty? ResolveProperty(MotionTrack track, VisualElement target)
