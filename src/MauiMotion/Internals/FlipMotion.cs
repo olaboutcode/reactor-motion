@@ -2,34 +2,29 @@ using Reactor.Motion;
 
 namespace Reactor.Motion.Internals;
 
-/// <summary>Builds the translation that a list row plays after a layout change.</summary>
+/// <summary>Builds the motion an item plays after its place changes.</summary>
 internal static class FlipMotion
 {
-    public static void RejectTracks(Motion timing)
-    {
-        if (timing.Tracks.Count > 0)
-        {
-            System.Diagnostics.Debug.Assert(
-                false,
-                "Collection move supplies timing. Tracks on it are ignored.");
-        }
-    }
-
     public static Motion Fade(bool inbound, Motion timing)
         => Time(inbound ? Motion.None.FadeIn() : Motion.None.FadeOut(), timing);
 
     /// <summary>
-    /// Translation from the invert to rest. A quiet axis is left off so another
-    /// player can keep it. Null when neither axis moved.
+    /// The caller's move recipe. <see cref="Motion.FromPlace"/> adds translation
+    /// from the invert to rest on each axis that moved. A quiet axis is left off
+    /// so another player can keep it. Null when the recipe has no tracks.
     /// </summary>
-    public static Motion? Shift(Motion timing, double x, double y)
+    public static Motion? Move(Motion recipe, double x, double y)
     {
-        Motion? body = null;
-        if (Math.Abs(x) >= FlipPlan.Epsilon)
-            body = Motion.None.TranslateX(x, 0);
-        if (Math.Abs(y) >= FlipPlan.Epsilon)
-            body = (body ?? Motion.None).TranslateY(y, 0);
-        return body is null ? null : Time(body, timing);
+        var body = recipe;
+        if (recipe.Place)
+        {
+            if (Math.Abs(x) >= FlipPlan.Epsilon)
+                body = body.TranslateX(x, 0);
+            if (Math.Abs(y) >= FlipPlan.Epsilon)
+                body = body.TranslateY(y, 0);
+        }
+
+        return body.Tracks.Count == 0 ? null : body;
     }
 
     public static Motion Time(Motion body, Motion timing)

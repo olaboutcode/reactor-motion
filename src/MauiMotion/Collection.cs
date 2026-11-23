@@ -2,55 +2,43 @@ using MauiReactor;
 
 namespace Reactor.Motion;
 
-/// <summary>Builds the stack behind <see cref="Motion.VCollection{T}"/>.</summary>
+/// <summary>Builds the host behind <see cref="Motion.Collection{T}"/>.</summary>
 internal static class FlipEntries
 {
     public static VisualNode Create<T>(
         IEnumerable<T> items,
-        Func<T, object> key,
-        Func<T, VisualNode> item,
-        Func<Motion, Motion>? move,
-        Func<Motion, Motion>? enter,
-        Func<Motion, Motion>? exit,
-        double spacing,
-        StackOrientation orientation)
+        Func<T, object> itemKey,
+        Func<T, VisualNode> renderItem,
+        Func<IEnumerable<VisualNode>, VisualNode> placeItems,
+        Func<Motion, Motion>? moveMotion,
+        Func<Motion, Motion>? enterMotion,
+        Func<Motion, Motion>? exitMotion)
     {
         ArgumentNullException.ThrowIfNull(items);
-        ArgumentNullException.ThrowIfNull(key);
-        ArgumentNullException.ThrowIfNull(item);
-        var timing = move is null ? Motion.None : move(Motion.None);
-        FlipMotion.RejectTracks(timing);
-        var enterMotion = enter is null ? FlipMotion.Fade(inbound: true, timing) : enter(Motion.None);
-        var exitMotion = exit is null ? FlipMotion.Fade(inbound: false, timing) : exit(Motion.None);
-        return new FlipList<T>(
-            items.ToList(), key, item, timing, enterMotion, exitMotion, spacing, orientation);
+        ArgumentNullException.ThrowIfNull(itemKey);
+        ArgumentNullException.ThrowIfNull(renderItem);
+        ArgumentNullException.ThrowIfNull(placeItems);
+        var motion = moveMotion is null ? Motion.None.FromPlace() : moveMotion(Motion.None);
+        var enter = enterMotion is null ? FlipMotion.Fade(inbound: true, motion) : enterMotion(Motion.None);
+        var exit = exitMotion is null ? FlipMotion.Fade(inbound: false, motion) : exitMotion(Motion.None);
+        return new FlipList<T>([.. items], itemKey, renderItem, placeItems, motion, enter, exit);
     }
 }
 
 /// <summary>
-/// Lays a keyed collection out as a stack and slides items when it changes.
+/// Keeps a keyed collection mounted and plays enter, exit, and move.
+/// The caller places the item nodes.
 /// </summary>
 public static class CollectionExtensions
 {
-    /// <summary>Same as <c>Motion.VCollection</c>.</summary>
-    public static VisualNode VCollection<T>(
+    /// <summary>Same as <c>Motion.Collection</c>.</summary>
+    public static VisualNode Collection<T>(
         this IEnumerable<T> items,
-        Func<T, object> key,
-        Func<T, VisualNode> item,
-        Func<Motion, Motion>? move = null,
-        Func<Motion, Motion>? enter = null,
-        Func<Motion, Motion>? exit = null,
-        double spacing = 0)
-        => Motion.VCollection(items, key, item, move, enter, exit, spacing);
-
-    /// <summary>Same as <c>Motion.HCollection</c>.</summary>
-    public static VisualNode HCollection<T>(
-        this IEnumerable<T> items,
-        Func<T, object> key,
-        Func<T, VisualNode> item,
-        Func<Motion, Motion>? move = null,
-        Func<Motion, Motion>? enter = null,
-        Func<Motion, Motion>? exit = null,
-        double spacing = 0)
-        => Motion.HCollection(items, key, item, move, enter, exit, spacing);
+        Func<T, object> itemKey,
+        Func<T, VisualNode> renderItem,
+        Func<IEnumerable<VisualNode>, VisualNode> placeItems,
+        Func<Motion, Motion>? moveMotion = null,
+        Func<Motion, Motion>? enterMotion = null,
+        Func<Motion, Motion>? exitMotion = null)
+        => Motion.Collection(items, itemKey, renderItem, placeItems, moveMotion, enterMotion, exitMotion);
 }

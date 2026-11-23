@@ -127,14 +127,14 @@ global using Reactor.Motion;
 
 | Type | Role |
 |---|---|
-| `Motion` | Recipe, plus static `Define`, `Bind`, `Play`, `ForwardAsync`, `ReverseAsync`, `Drag`, `VCollection`, and `HCollection`. |
+| `Motion` | Recipe, plus static `Define`, `Bind`, `Play`, `ForwardAsync`, `ReverseAsync`, `Drag`, and `Collection`. |
 | `MotionPlayer` | Playback. |
 | `MotionPlaybackEventArgs` | Player events. State is `IsDismissed()`, `IsForward()`, `IsReverse()`, `IsPaused()`, and `IsCompleted()`. |
 | `Spring`, `Stagger`, `StaggerFrom`, `SlideFrom`, `ColorSpace`, `KeyframeBuilder<T>`, `Matrix4` | Recipe values. |
 | `MotionCurve` | `CubicBezier` easing. |
 | `MotionPreferences` | App-wide reduce-motion override. |
 | `VisualNodeExtensions` | `.BindMotion()`, `.EnterExit()`, `.Drag()`. |
-| `CollectionExtensions` | `.VCollection()` and `.HCollection()` on a keyed collection. |
+| `CollectionExtensions` | `.Collection()` on a keyed collection. |
 | `MotionPlayerExtensions` | Null-safe `Forward` and `Reverse` on `MotionPlayer?`. |
 
 The snippets below assume that using, plus `MauiReactor`.
@@ -487,33 +487,38 @@ An infinite `Repeat` on the exit never finishes, so the child never unmounts. Gi
 
 ### Collection
 
-`Collection` is that presence for many items. Pass the items, a stable key, and the item. Items that stay slide from their last position. A new item plays enter. A removed item plays exit where it was and leaves the flow, so the others close the gap while it is still on screen. The first layout records positions and does not play.
+`Collection` is that presence for many items. Pass the items, `itemKey`, `renderItem`, and `placeItems`. A new item plays `enterMotion`. A removed item plays `exitMotion` where it was and leaves the flow, so the others close the gap while it is still on screen. An item that stays and changes place plays `moveMotion`. The first layout records positions and does not play.
 
 ```csharp
-Motion.VCollection(
+Motion.Collection(
     State.Items,
-    item => item.Id,
-    item => Row(item),
-    move: m => m.WithDuration(280),
-    enter: m => m.FadeIn().SlideIn(SlideFrom.Top, 16).WithDuration(280),
-    exit: m => m.FadeOut().WithDuration(200),
-    spacing: 8)
+    itemKey: item => item.Id,
+    renderItem: item => Row(item),
+    placeItems: rows => VStack([.. rows]).Spacing(8),
+    moveMotion: m => m.FromPlace().WithDuration(280),
+    enterMotion: m => m.FadeIn().SlideIn(SlideFrom.Top, 16).WithDuration(280),
+    exitMotion: m => m.FadeOut().WithDuration(200))
 ```
 
-`items.VCollection(...)` is the same call. `Motion.HCollection` and `items.HCollection(...)` lay the items across. The arguments are the same.
+`items.Collection(...)` is the same call. `placeItems` can return a stack, a grid, or a scroll view around those nodes. A `CollectionView` templates and recycles its own cells, so it does not host these nodes.
 
 | Member | Role |
 |---|---|
-| `Motion.VCollection(IEnumerable<T> items, Func<T, object> key, Func<T, VisualNode> item, Func<Motion, Motion>? move = null, Func<Motion, Motion>? enter = null, Func<Motion, Motion>? exit = null, double spacing = 0)` | Vertical stack. `move`, `enter`, and `exit` each receive an empty motion. |
-| `Motion.HCollection(...)` | Same arguments. Items run across. |
-| `IEnumerable<T>.VCollection(...)` | Same arguments as `Motion.VCollection`, starting with the key. |
-| `IEnumerable<T>.HCollection(...)` | Same arguments as `Motion.HCollection`, starting with the key. |
+| `Motion.Collection(IEnumerable<T> items, Func<T, object> itemKey, Func<T, VisualNode> renderItem, Func<IEnumerable<VisualNode>, VisualNode> placeItems, Func<Motion, Motion>? moveMotion = null, Func<Motion, Motion>? enterMotion = null, Func<Motion, Motion>? exitMotion = null)` | Keyed items. `placeItems` places the live nodes. `moveMotion`, `enterMotion`, and `exitMotion` each receive an empty motion. |
+| `IEnumerable<T>.Collection(...)` | Same arguments, starting with `itemKey`. |
+| `Motion.FromPlace()` | On a collection move, translation starts at the item's last position. Other tracks on that recipe still play. |
 
-`key` is compared with `Equals`. It must not be null. When two items share a key, the first one is kept.
+`itemKey` is compared with `Equals`. It must not be null. When two items share a key, the first one is kept.
 
-`move` supplies the slide's duration, easing, spring, delay, rate, and reduce-motion. Tracks on it are ignored. Omit it and the slide is 300 ms and `CubicOut`. Omit `enter` and a new item fades in with that timing. Omit `exit` and a removed item fades out with that timing. An exit that never finishes never leaves the collection.
+`moveMotion`, `enterMotion`, and `exitMotion` play the tracks you write. `FromPlace` on `moveMotion` adds the slide from the last frame. Omit `moveMotion` and that slide is 300 ms and `CubicOut`. Omit `enterMotion` and a new item fades in with the move's timing. Omit `exitMotion` and a removed item fades out with that timing. An exit that never finishes never leaves the collection.
 
-The slide translates the item wrapper. Enter and exit use the same target walk as `BindMotion`, so a fade or a slide on the item does not take the wrapper's translation. `spacing` is the gap between items, in device-independent pixels.
+```csharp
+moveMotion: m => m.RotateY(90, 0).WithDuration(400)
+```
+
+That turns an item that changed place. It does not slide. `m.FromPlace().RotateY(18, 0)` does both.
+
+The move translates the item wrapper. Enter and exit use the same target walk as `BindMotion`, so a fade or a slide on the item does not take the wrapper's translation.
 
 An item that comes back while its exit is still playing slides from the frame it left. The view is a fresh one, so the exit's halfway fade does not carry over.
 
@@ -1008,7 +1013,7 @@ A posed replacement still receives the spring speed of the properties it takes. 
 
 ## Samples
 
-`samples/Sample` is a MauiReactor gallery. Home lists the playground, stagger, scrub, color spaces, timeline seek, path (Bézier + arc), matrix (turn and tilt), enter / exit, poses, drag, and collection. On the poses page, Play springs two cards toward an outline. Halfway, Pose comes back from the live position and keeps the spring speed. Snap jumps onto the outline, then comes back. On the drag page, one card follows the finger along a lane and springs to the nearer end. Another moves across a board and springs to the nearest corner. Both keep the speed of the flick. On the collection page, adding, removing, or moving an item slides the items that stay. A removed item fades where it left. The horizontal button uses `HCollection` to lay the same items across.
+`samples/Sample` is a MauiReactor gallery. Home lists the playground, stagger, scrub, color spaces, timeline seek, path (Bézier + arc), matrix (turn and tilt), enter / exit, poses, drag, and collection. On the poses page, Play springs two cards toward an outline. Halfway, Pose comes back from the live position and keeps the spring speed. Snap jumps onto the outline, then comes back. On the drag page, one card follows the finger along a lane and springs to the nearer end. Another moves across a board and springs to the nearest corner. Both keep the speed of the flick. On the collection page, adding, removing, or moving an item plays the move on the items that stay. A removed item fades where it left. The items sit in a vertical stack.
 
 ## Building
 

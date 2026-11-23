@@ -13,8 +13,6 @@ sealed class MotionCollectionPageState
     ];
 
     public int NextId { get; set; } = 4;
-
-    public MauiControls.StackOrientation Orientation { get; set; } = MauiControls.StackOrientation.Vertical;
 }
 
 /// <summary>
@@ -35,43 +33,33 @@ sealed class MotionCollectionPage : Component<MotionCollectionPageState>
                         Label("Collection")
                             .FontSize(28)
                             .HCenter(),
+                        
                         Caption("Add, delete, or move an item. The others slide from where they were. A deleted item fades in place."),
-                        Button("Add", Add)
-                            .HCenter(),
-                        Button(State.Orientation == MauiControls.StackOrientation.Vertical ? "Horizontal" : "Vertical", ToggleOrientation)
-                            .HCenter(),
+                        
+                        Button("Add An Item", Add)
+                            .HCenter()
+                            .CornerRadius(12),
+                        
                         Items()
                     )
                     .Spacing(16)
                     .Padding(24, 24, 24, 32)
                 )
                 .GridRow(1)
+                .VerticalScrollBarVisibility(ScrollBarVisibility.Never)
             )
         )
         .HideNavigationBar();
 
-    void ToggleOrientation()
-        => SetState(s => s.Orientation = s.Orientation == MauiControls.StackOrientation.Vertical
-            ? MauiControls.StackOrientation.Horizontal
-            : MauiControls.StackOrientation.Vertical);
-
     VisualNode Items()
-    {
-        static Motion move(Motion m) => m.WithDuration(280).WithEasing(Easing.CubicOut);
-        static Motion enter(Motion m) => m.FadeIn().SlideIn(SlideFrom.Top, 16).WithDuration(280);
-        static Motion exit(Motion m) => m.FadeOut().WithDuration(200);
-        
-        var across = State.Orientation == MauiControls.StackOrientation.Horizontal;
-        VisualNode collection = across
-            ? Motion.HCollection(State.Items, item => item.Id, Row, move, enter, exit, spacing: 8)
-            : Motion.VCollection(State.Items, item => item.Id, Row, move, enter, exit, spacing: 8);
-        if (State.Orientation != MauiControls.StackOrientation.Horizontal)
-            return collection;
-
-        return ScrollView(collection)
-            .Orientation(ScrollOrientation.Horizontal)
-            .HorizontalScrollBarVisibility(ScrollBarVisibility.Never);
-    }
+        => Motion.Collection(
+            State.Items,
+            itemKey: item => item.Id,
+            renderItem: Row,
+            placeItems: rows => VStack([.. rows]).Spacing(8),
+            moveMotion: m => m.FromPlace().WithDuration(280).WithEasing(Easing.CubicOut),
+            enterMotion: m => m.FadeIn().SlideIn(SlideFrom.Top, 16).WithDuration(280),
+            exitMotion: m => m.FadeOut().WithDuration(200));
 
     void Add()
         => SetState(s =>
@@ -96,34 +84,54 @@ sealed class MotionCollectionPage : Component<MotionCollectionPageState>
 
     VisualNode Row(FlipItem item)
     {
-        var across = State.Orientation == MauiControls.StackOrientation.Horizontal;
-        var row = Border(
-            Grid(
-                "64",
-                across ? "auto,auto,auto,auto" : "*,auto,auto,auto",
-                Label(item.Name)
-                    .FontSize(16)
-                    .VCenter()
-                    .Margin(16, 0, 0, 0),
-                Button("Up", () => Move(item.Id, -1))
-                    .GridColumn(1)
-                    .FontSize(12)
-                    .VCenter(),
-                Button("Down", () => Move(item.Id, 1))
-                    .GridColumn(2)
-                    .FontSize(12)
-                    .VCenter(),
-                Button("X", () => Delete(item.Id))
-                    .GridColumn(3)
-                    .FontSize(12)
-                    .BackgroundColor(Colors.OrangeRed)
-                    .VCenter()
-                    .Margin(0, 0, 12, 0))
-            .BackgroundColor(Colors.Teal.WithAlpha(0.15f))
-            .ColumnSpacing(4))
-            .Stroke(Colors.Transparent)
-            .StrokeCornerRadius(16);
-        return across ? row.HStart() : row;
+        var index = State.Items.FindIndex(entry => entry.Id == item.Id);
+        var canMoveUp = index > 0;
+        var canMoveDown = index >= 0 && index < State.Items.Count - 1;
+        return Border(
+            Grid("*", "*,auto",
+                Border(
+                    Grid(
+                        Label(item.Name)
+                        .FontSize(16)
+                        .TextColor(Colors.White)
+                        .Center()
+                    )
+                )
+                .StrokeCornerRadius(12)
+                .Stroke(Colors.Transparent)
+                .BackgroundColor(Colors.Teal.WithAlpha(0.6f)),
+
+                VStack(
+                    Button("Move Up", () => Move(item.Id, -1))
+                        .GridColumn(1)
+                        .FontSize(12)
+                        .CornerRadius(12)
+                        .BackgroundColor(Colors.Teal.WithAlpha(canMoveUp ? 0.8f : 0.25f))
+                        .IsEnabled(canMoveUp),
+                    Button("Move Down", () => Move(item.Id, 1))
+                        .GridColumn(2)
+                        .FontSize(12)
+                        .CornerRadius(12)
+                        .BackgroundColor(Colors.Teal.WithAlpha(canMoveDown ? 0.8f : 0.25f))
+                        .IsEnabled(canMoveDown),
+
+                    Button("Delete", () => Delete(item.Id))
+                        .GridColumn(3)
+                        .FontSize(12)
+                        .CornerRadius(12)
+                        .BackgroundColor(Colors.OrangeRed)
+                )
+                .HCenter()
+                .Spacing(4)
+                .GridColumn(1)
+            )
+            .ColumnSpacing(8)
+        )
+        .Padding(8)
+        .StrokeCornerRadius(18)
+        .Stroke(Colors.Transparent)
+        .MinimumWidthRequest(320)
+        .BackgroundColor(Colors.Teal.WithAlpha(0.2f));
     }
 
     static MauiReactor.Label Caption(string text)

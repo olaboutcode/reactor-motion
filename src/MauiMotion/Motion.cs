@@ -47,6 +47,7 @@ public sealed class Motion
     readonly bool _durationSet;
     readonly bool _easingSet;
     readonly bool _pose;
+    readonly bool _place;
     readonly IReadOnlyList<TimelineBeat> _beats;
 
     Motion(
@@ -68,7 +69,8 @@ public sealed class Motion
         double rate = 1,
         double springVelocity = 0,
         bool? reduceMotion = null,
-        bool pose = false)
+        bool pose = false,
+        bool place = false)
     {
         Duration = duration;
         Easing = easing;
@@ -89,6 +91,7 @@ public sealed class Motion
         SpringVelocity = springVelocity;
         ReduceMotion = reduceMotion;
         _pose = pose;
+        _place = place;
     }
 
     /// <summary>
@@ -145,6 +148,11 @@ public sealed class Motion
     /// When true, each new forward reads property from-values from the view.
     /// </summary>
     internal bool Pose => _pose;
+
+    /// <summary>
+    /// When true, a collection move starts this item at its last position.
+    /// </summary>
+    internal bool Place => _place;
 
     /// <summary>
     /// Flutter <c>Matrix4.setEntry(3, 2, entry)</c>. Null leaves the platform
@@ -236,6 +244,13 @@ public sealed class Motion
     /// </summary>
     public Motion WithPose()
         => Copy(pose: true);
+
+    /// <summary>
+    /// On a collection move, translation starts at the item's last position and
+    /// ends at its new one. Tracks already on this recipe play as well.
+    /// </summary>
+    public Motion FromPlace()
+        => _place ? this : Copy(place: true);
 
     /// <summary>
     /// Springs each track added so far. Tracks added after this call stay on the duration clock.
@@ -851,7 +866,8 @@ public sealed class Motion
             rate: other.Rate != 1 ? other.Rate : Rate,
             springVelocity: other._spring is not null ? other.SpringVelocity : SpringVelocity,
             reduceMotion: other.ReduceMotion ?? ReduceMotion,
-            pose: _pose || other._pose);
+            pose: _pose || other._pose,
+            place: _place || other._place);
     }
 
     /// <summary>
@@ -975,51 +991,39 @@ public sealed class Motion
     }
 
     /// <summary>
-    /// Shows <paramref name="items"/> in a vertical stack. An item that stays slides
-    /// from its last position. An item that appears plays <paramref name="enter"/>.
-    /// An item that leaves plays <paramref name="exit"/> where it was and stays
-    /// until that run finishes, while the others close the gap.
+    /// Keeps <paramref name="items"/> mounted by <paramref name="itemKey"/>.
+    /// <paramref name="placeItems"/> places the nodes from <paramref name="renderItem"/>.
+    /// An item that appears plays <paramref name="enterMotion"/>. An item
+    /// that leaves plays <paramref name="exitMotion"/> where it was and stays until that
+    /// run finishes. An item that stays and changes place plays <paramref name="moveMotion"/>.
     /// The first layout records positions and does not play.
     /// </summary>
     /// <remarks>
-    /// <paramref name="key"/> is compared with <see cref="object.Equals(object?)"/>.
+    /// <paramref name="itemKey"/> is compared with <see cref="object.Equals(object?)"/>.
     /// It must not be null. When two items share a key, the first one is kept.
-    /// <paramref name="move"/> supplies the slide's duration, easing, spring, delay,
-    /// rate, and reduce-motion. Tracks on it are ignored. Omit it for a 300 ms
-    /// <c>CubicOut</c> slide. Omit <paramref name="enter"/> for a fade in, or
-    /// <paramref name="exit"/> for a fade out, using that same timing.
+    /// <paramref name="placeItems"/> receives the live item nodes in order and returns
+    /// the view that arranges them. A stack, a grid, or a scroll view are the same call.
+    /// <paramref name="moveMotion"/>, <paramref name="enterMotion"/>, and <paramref name="exitMotion"/>
+    /// each receive an empty motion and their tracks play as written.
+    /// <see cref="FromPlace"/> on <paramref name="moveMotion"/> starts translation at the
+    /// last position. Omit <paramref name="moveMotion"/> for that slide over 300 ms
+    /// <c>CubicOut</c>. Omit <paramref name="enterMotion"/> for a fade in, or
+    /// <paramref name="exitMotion"/> for a fade out, using the move's timing.
     /// An exit that never finishes never leaves the collection.
-    /// An item that returns during its exit slides from the frame it left, on a fresh view.
-    /// The slide translates the item wrapper. Enter and exit use the same target
-    /// walk as <c>BindMotion</c>. <paramref name="spacing"/> is the gap between
-    /// items, in device-independent pixels.
-    /// <c>items.VCollection(...)</c> is the same call.
-    /// <see cref="HCollection{T}"/> lays the same items across.
+    /// An item that returns during its exit moves from the frame it left, on a fresh view.
+    /// The move translates the item wrapper. Enter and exit use the same target
+    /// walk as <c>BindMotion</c>.
+    /// <c>items.Collection(...)</c> is the same call.
     /// </remarks>
-    public static VisualNode VCollection<T>(
+    public static VisualNode Collection<T>(
         IEnumerable<T> items,
-        Func<T, object> key,
-        Func<T, VisualNode> item,
-        Func<Motion, Motion>? move = null,
-        Func<Motion, Motion>? enter = null,
-        Func<Motion, Motion>? exit = null,
-        double spacing = 0)
-        => FlipEntries.Create(items, key, item, move, enter, exit, spacing, StackOrientation.Vertical);
-
-    /// <summary>
-    /// Shows <paramref name="items"/> in a horizontal stack.
-    /// Same arguments and behavior as <see cref="VCollection{T}"/>, with items laid across.
-    /// </summary>
-    /// <remarks><c>items.HCollection(...)</c> is the same call.</remarks>
-    public static VisualNode HCollection<T>(
-        IEnumerable<T> items,
-        Func<T, object> key,
-        Func<T, VisualNode> item,
-        Func<Motion, Motion>? move = null,
-        Func<Motion, Motion>? enter = null,
-        Func<Motion, Motion>? exit = null,
-        double spacing = 0)
-        => FlipEntries.Create(items, key, item, move, enter, exit, spacing, StackOrientation.Horizontal);
+        Func<T, object> itemKey,
+        Func<T, VisualNode> renderItem,
+        Func<IEnumerable<VisualNode>, VisualNode> placeItems,
+        Func<Motion, Motion>? moveMotion = null,
+        Func<Motion, Motion>? enterMotion = null,
+        Func<Motion, Motion>? exitMotion = null)
+        => FlipEntries.Create(items, itemKey, renderItem, placeItems, moveMotion, enterMotion, exitMotion);
 
     /// <summary>Same as <see cref="Drag(VisualElement, Spring, Func{DragPlane, DragPlane})"/> with manual clocks for tests.</summary>
     internal static Drag Drag(VisualElement target, Spring spring, Func<DragPlane, DragPlane> plane, bool manual)
@@ -1175,7 +1179,8 @@ public sealed class Motion
         double? springVelocity = null,
         bool? reduceMotion = null,
         bool setReduceMotion = false,
-        bool? pose = null)
+        bool? pose = null,
+        bool? place = null)
         => new(
             duration ?? Duration,
             easing ?? Easing,
@@ -1195,7 +1200,8 @@ public sealed class Motion
             rate ?? Rate,
             springVelocity ?? (setSpring ? 0 : SpringVelocity),
             setReduceMotion ? reduceMotion : ReduceMotion,
-            pose ?? _pose);
+            pose ?? _pose,
+            place ?? _place);
 
     static double SanitizeVelocity(double velocity)
         => double.IsNaN(velocity) || double.IsInfinity(velocity) ? 0 : velocity;

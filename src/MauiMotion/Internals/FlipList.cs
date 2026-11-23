@@ -48,19 +48,18 @@ internal sealed class FlipListState
 internal sealed record FlipExitKey(object Value);
 
 /// <summary>
-/// Keyed stack. Items that stay slide from their last frame. Items that appear
-/// play enter. Items that leave play exit at the last frame, out of the flow.
-/// The first layout only records frames.
+/// Keyed items. The caller places the live nodes. Items that stay and change
+/// place play move. Items that appear play enter. Items that leave play exit
+/// at the last frame, out of the flow. The first layout only records frames.
 /// </summary>
 internal sealed class FlipList<T>(
     IReadOnlyList<T> items,
     Func<T, object> keyOf,
     Func<T, VisualNode> render,
+    Func<IEnumerable<VisualNode>, VisualNode> layout,
     Motion move,
     Motion enter,
-    Motion exit,
-    double spacing,
-    StackOrientation orientation) : Component<FlipListState>
+    Motion exit) : Component<FlipListState>
 {
     protected override void OnMounted()
         => Sync();
@@ -84,15 +83,15 @@ internal sealed class FlipList<T>(
 
     public override VisualNode Render()
     {
-        var stack = new MauiReactor.StackLayout<CollectionLayout>(Attach);
-        stack.Spacing(spacing);
-        stack.Orientation(orientation);
-        stack.AddChildren(Rows(State.Live, exiting: false));
+        var host = new MauiReactor.StackLayout<CollectionLayout>(Attach);
+        host.Spacing(0);
+        host.AddChildren(layout(Rows(State.Live, exiting: false)));
         var exits = new MauiReactor.Grid(Rows(State.Exits, exiting: true))
-            .InputTransparent(true)
-            .CascadeInputTransparent(true);
-        var root = new MauiReactor.Grid([stack, exits]).VStart();
-        return orientation == StackOrientation.Horizontal ? root.HStart() : root.HFill();
+            .InputTransparent(inputTransparent: true)
+            .CascadeInputTransparent(cascadeInputTransparent: true);
+        return new MauiReactor.Grid([host, exits])
+            .HFill()
+            .VStart();
     }
 
     void Sync()
@@ -295,9 +294,9 @@ internal sealed class FlipList<T>(
     void Slide(object key, VisualElement host, FlipFrame previous, FlipFrame frame)
     {
         var (x, y) = FlipPlan.Invert(previous, host.TranslationX, host.TranslationY, frame);
-        var shift = FlipMotion.Shift(move, x, y);
-        if (shift is not null)
-            Play(key, host, shift);
+        var motion = FlipMotion.Move(move, x, y);
+        if (motion is not null)
+            Play(key, host, motion);
     }
 
     void BeginExit(object key, VisualElement host)
