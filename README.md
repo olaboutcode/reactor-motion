@@ -561,7 +561,7 @@ public sealed class MotionPlayer : IDisposable
 
 `Progress` is eased playback in the range 0–1. It increases on the way forward and decreases on the way back. A spring reports the spring position, clamped to 0–1. `IsRunning` is true while `IsForward()` or `IsReverse()` is true.
 
-`At` registers a callback for the life of the player. It runs immediately with the current `Progress`, then on every later tick, including ticks that decrease. A callback that throws is logged and skipped.
+`At` registers a callback for the life of the player. It runs immediately with the current `Progress`, then on every later tick, including ticks that decrease. A callback that throws is logged and skipped. It does not take a beat id. A beat callback is `OnBeat` on the recipe.
 
 ```csharp
 player.At(t => scrubLabel.Text = $"{t:0.00}");
@@ -955,10 +955,20 @@ Motion.Timeline(m => m.FadeIn().SlideIn(SlideFrom.Left, 48), "intro")
 | `And(Func<Motion, Motion> configure)` | Builds a recipe and plays it at the same time as the receiver. |
 | `Add(Motion child, uint at = 0, string? id = null, int? target = null)` | Inserts `child` at `at + child.Delay` milliseconds. Parent length becomes `max(current, at + child.Delay + child.Duration)`. The parent's own delay stays the player hold. `target` is the bind index. Null plays on every view. |
 | `Then(Motion next, string? id = null, int? target = null, int offset = 0)` | Appends `next` at `Duration + offset`. |
+| `OnBeat(string id, Action enter)` | Runs `enter` when forward playback reaches `id`, including each later repeat. |
 
 Children are flattened immediately. Their tracks are shifted in milliseconds and are not stretched. A nested `Stagger` is ignored. If two tracks write the same property of the same view in overlapping time, the later one wins and a debug build logs the overlap.
 
 `id` records a named window as a fraction of the parent length. Duplicate ids keep the last one. `Seek(id)` and `TrySpan` read those windows. See [Seek](#seek).
+
+`OnBeat` runs when forward playback reaches that named beat, including each later repeat. It does not run during a timeline delay, on seek, or on the way back. `MotionPlayer.At` still listens to the whole player progress.
+
+```csharp
+Motion.Timeline(duration: 320, easing: Easing.CubicOut)
+    .Add(Motion.Define(m => m.TranslateX(0, 72)), id: "slide")
+    .Then(Motion.Define(m => m.FadeIn()), id: "fade")
+    .OnBeat("fade", () => { });
+```
 
 `WithDuration` on a `Timeline` sets every beat that did not call `WithDuration`, then lays the beats out again. A `Then` beat follows the new end, keeping its `offset`. An `Add` beat keeps its `at`. A child `WithDelay` stays a gap before that beat. `WithEasing` sets the curve for every beat that did not call `WithEasing`. A beat that did call it keeps that curve.
 
@@ -1078,7 +1088,7 @@ A posed replacement still receives the spring speed of the properties it takes. 
 
 ## Samples
 
-`samples/Sample` is a MauiReactor gallery. Home lists the playground, stagger, scrub, color spaces, timeline, path, matrix, enter / exit, poses, drag, and collection. The playground includes slide out, scale out, width, and corner radius alongside the fades, springs, and keyframes. Stagger can start from the start, the center, or the end of the grid. Scrub seeks a fade and a cubic path. Color compares HSV, RGB, and three HSV stops. The timeline page plays a sequence with seek, an overlap, a box and an image on one timeline, a hold, a yoyo, a repeat, a stagger, and a spring. Path plays a cubic Bézier, a tangent-following arc, a quadratic hop, a cornered polyline, a slice of the cubic, and the arc walked backward. Matrix plays a turn, a tilt, and a flip. Enter / exit shows a slide and a scale. On the poses page, Play springs two cards toward an outline. Halfway, Pose comes back from the live position and keeps the spring speed. Snap jumps onto the outline, then comes back. On the drag page, one card follows the finger along a lane and springs to the nearer end. Another moves across a board and springs to the nearest corner. A third stays in place and grows as you drag, then springs to small or large. All three keep the speed of the flick. On the collection page, adding, removing, or moving an item plays the move on the items that stay. A removed item fades where it left. The items sit in a vertical stack.
+`samples/Sample` is a MauiReactor gallery. Home lists the playground, stagger, scrub, color spaces, timeline, path, matrix, enter / exit, poses, drag, and collection. The playground includes slide out, scale out, width, and corner radius alongside the fades, springs, and keyframes. Stagger can start from the start, the center, or the end of the grid. Scrub seeks a fade and a cubic path. Color compares HSV, RGB, and three HSV stops. The timeline page plays a sequence with seek, an overlap, a beat name that changes when the beat starts, a box and an image on one timeline, a hold, a yoyo, a repeat, a stagger, and a spring. Path plays a cubic Bézier, a tangent-following arc, a quadratic hop, a cornered polyline, a slice of the cubic, and the arc walked backward. Matrix plays a turn, a tilt, and a flip. Enter / exit shows a slide and a scale. On the poses page, Play springs two cards toward an outline. Halfway, Pose comes back from the live position and keeps the spring speed. Snap jumps onto the outline, then comes back. On the drag page, one card follows the finger along a lane and springs to the nearer end. Another moves across a board and springs to the nearest corner. A third stays in place and grows as you drag, then springs to small or large. All three keep the speed of the flick. On the collection page, adding, removing, or moving an item plays the move on the items that stay. A removed item fades where it left. The items sit in a vertical stack.
 
 ## Building
 

@@ -845,6 +845,36 @@ public sealed class Motion
     }
 
     /// <summary>
+    /// Runs <paramref name="enter"/> when forward playback reaches the beat named
+    /// <paramref name="id"/>, including each later repeat. Seek and reverse do not run it.
+    /// <see cref="MotionPlayer.At"/> stays the 0–1 listener. A missing id is ignored.
+    /// The latest call for an id wins.
+    /// </summary>
+    public Motion OnBeat(string id, Action enter)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(id);
+        ArgumentNullException.ThrowIfNull(enter);
+
+        var index = -1;
+        for (var i = 0; i < _spans.Count; i++)
+        {
+            if (string.Equals(_spans[i].Id, id, StringComparison.Ordinal))
+                index = i;
+        }
+
+        if (index < 0)
+        {
+            System.Diagnostics.Debug.WriteLine($"Motion.OnBeat: no beat named \"{id}\".");
+            return this;
+        }
+
+        var spans = new NamedSpan[_spans.Count];
+        for (var i = 0; i < spans.Length; i++)
+            spans[i] = i == index ? _spans[i] with { Enter = enter } : _spans[i];
+        return Copy(spans: spans);
+    }
+
+    /// <summary>
     /// Plays <paramref name="other"/> at the same time. The parent span is the
     /// longer recipe after each side's delay is baked into its windows. The
     /// result's <see cref="Delay"/> is 0. Tracks keep their length in milliseconds

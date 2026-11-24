@@ -23,6 +23,7 @@ public sealed class MotionPlayer : IDisposable
     double _holdMs;
     int _direction = 1;
     int _repeatRemaining;
+    double _beatMark = -1;
     bool _autoRepeat = true;
     double _x;
     double _v;
@@ -560,6 +561,8 @@ public sealed class MotionPlayer : IDisposable
         }
 
         ArmHold(running, recapture);
+        if (running == MotionPlaybackStatus.Forward)
+            _beatMark = _elapsedMs <= 0 ? -1 : LinearU;
 
         _pending = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
         var task = _pending.Task;
@@ -889,6 +892,7 @@ public sealed class MotionPlayer : IDisposable
     {
         _elapsedMs = 0;
         _holdMs = 0;
+        _beatMark = -1;
         _direction = 1;
         ResetSpring(0, kick: true);
         KickTrackSprings();
@@ -957,6 +961,49 @@ public sealed class MotionPlayer : IDisposable
             listeners = _at.Snapshot();
         foreach (var callback in listeners)
             MotionPlaybackEventArgs.Invoke(callback, progress);
+        NoteBeats();
+    }
+
+    void NoteBeats()
+    {
+        if (_direction <= 0 || !IsRunning || _holdMs > 0 || DrivingSpring)
+            return;
+
+        var u = LinearU;
+        var previous = _beatMark;
+        _beatMark = u;
+        if (previous >= u)
+            return;
+
+        foreach (var span in Motion.NamedSpans)
+        {
+            if (span.Enter is not Action enter)
+                continue;
+
+            var begin = BeatBegin(span);
+            if (previous < begin && u >= begin)
+                InvokeBeat(enter);
+        }
+    }
+
+    double BeatBegin(NamedSpan span)
+    {
+        var parent = Motion.Duration;
+        if (parent == 0 || Duration == 0)
+            return span.Begin;
+        return span.Begin * parent / Duration;
+    }
+
+    static void InvokeBeat(Action enter)
+    {
+        try
+        {
+            enter();
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine(ex);
+        }
     }
 
     void SetStatus(MotionPlaybackStatus status)

@@ -602,4 +602,94 @@ public sealed class MotionTimelineTests
         Assert.Throws<ArgumentOutOfRangeException>(() =>
             timeline.Add(m => m.FadeIn(), target: -1));
     }
+
+    [Fact]
+    public void OnBeat_runs_when_forward_playback_enters_the_beat()
+    {
+        var slide = 0;
+        var fade = 0;
+        var box = new BoxView();
+        var clock = new MotionClock(manual: true);
+        var motion = Motion.Timeline(easing: Easing.Linear, repeat: 2)
+            .Add(m => m.Opacity(0, 1).WithDuration(100), id: "slide")
+            .Then(m => m.TranslateX(0, 10).WithDuration(100), id: "fade")
+            .OnBeat("slide", () => slide++)
+            .OnBeat("fade", () => fade++);
+        var player = MotionPlayer.Create(motion, [box], clock);
+        var progress = new List<double>();
+        player.At(progress.Add);
+
+        var task = player.ForwardAsync();
+        Assert.Equal(1, slide);
+        Assert.Equal(0, fade);
+        Assert.NotEmpty(progress);
+
+        clock.Tick(100);
+        Assert.Equal(1, slide);
+        Assert.Equal(1, fade);
+
+        clock.Tick(100);
+        Assert.False(task.IsCompleted);
+        Assert.Equal(2, slide);
+        Assert.Equal(1, fade);
+
+        clock.Tick(100);
+        Assert.Equal(2, fade);
+        clock.Tick(100);
+        Assert.True(task.IsCompletedSuccessfully);
+        Assert.Equal(2, slide);
+        Assert.Equal(2, fade);
+    }
+
+    [Fact]
+    public void OnBeat_does_not_run_on_seek_or_reverse()
+    {
+        var calls = 0;
+        var box = new BoxView();
+        var clock = new MotionClock(manual: true);
+        var motion = Motion.Timeline(easing: Easing.Linear, yoyo: true)
+            .Add(m => m.Opacity(0, 1).WithDuration(100), id: "slide")
+            .Then(m => m.TranslateX(0, 10).WithDuration(100), id: "fade")
+            .OnBeat("slide", () => calls++)
+            .OnBeat("fade", () => calls++);
+        var player = MotionPlayer.Create(motion, [box], clock);
+
+        player.Seek("fade");
+        Assert.Equal(0, calls);
+
+        player = MotionPlayer.Create(motion, [box], clock);
+        var task = player.ForwardAsync();
+        clock.Tick(200);
+        Assert.False(task.IsCompleted);
+        Assert.Equal(MotionPlaybackStatus.Reverse, player.Status);
+        Assert.Equal(2, calls);
+
+        clock.Tick(200);
+        Assert.True(task.IsCompletedSuccessfully);
+        Assert.Equal(2, calls);
+    }
+
+    [Fact]
+    public void OnBeat_waits_out_the_timeline_delay()
+    {
+        var calls = 0;
+        var clock = new MotionClock(manual: true);
+        var motion = Motion.Timeline(duration: 100, delay: 50, easing: Easing.Linear)
+            .Add(m => m.Opacity(0, 1), id: "fade")
+            .OnBeat("fade", () => calls++);
+        var player = MotionPlayer.Create(motion, [new BoxView()], clock);
+
+        _ = player.ForwardAsync();
+        Assert.Equal(0, calls);
+        clock.Tick(50);
+        Assert.Equal(1, calls);
+    }
+
+    [Fact]
+    public void OnBeat_ignores_a_missing_id()
+    {
+        var motion = Motion.Timeline(duration: 40).Add(m => m.Opacity(0, 1), id: "fade");
+        var same = motion.OnBeat("missing", () => { });
+        Assert.Same(motion, same);
+    }
 }

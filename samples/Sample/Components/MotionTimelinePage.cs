@@ -1,7 +1,7 @@
 namespace Sample.Components;
 
 /// <summary>
-/// Sequence, overlap, a box and an image on one timeline, hold, yoyo, repeat, stagger, and a spring.
+/// Sequence, overlap, a beat callback, a box and an image on one timeline, hold, yoyo, repeat, stagger, and a spring.
 /// </summary>
 sealed class MotionTimelinePage : Component
 {
@@ -9,6 +9,8 @@ sealed class MotionTimelinePage : Component
 
     MauiControls.BoxView? _sequence;
     MauiControls.BoxView? _overlap;
+    MauiControls.BoxView? _beat;
+    MauiControls.Label? _beatName;
     MauiControls.BoxView? _offsetBox;
     MauiControls.Image? _offsetImage;
     MauiControls.BoxView? _hold;
@@ -21,6 +23,7 @@ sealed class MotionTimelinePage : Component
 
     MotionPlayer? _sequencePlayer;
     MotionPlayer? _overlapPlayer;
+    MotionPlayer? _beatPlayer;
     MotionPlayer? _offsetPlayer;
     MotionPlayer? _holdPlayer;
     MotionPlayer? _yoyoPlayer;
@@ -32,6 +35,7 @@ sealed class MotionTimelinePage : Component
     {
         _sequencePlayer?.Dispose();
         _overlapPlayer?.Dispose();
+        _beatPlayer?.Dispose();
         _offsetPlayer?.Dispose();
         _holdPlayer?.Dispose();
         _yoyoPlayer?.Dispose();
@@ -40,6 +44,7 @@ sealed class MotionTimelinePage : Component
         _springPlayer?.Dispose();
         _sequencePlayer = null;
         _overlapPlayer = null;
+        _beatPlayer = null;
         _offsetPlayer = null;
         _holdPlayer = null;
         _yoyoPlayer = null;
@@ -74,7 +79,7 @@ sealed class MotionTimelinePage : Component
                         Caption("The slide is 320 ms. The turn starts 180 ms before it ends."),
                         Lane(Colors.Teal, 72, box => _overlap = box, BindOverlap),
                         Actions(Button("Play", () => _ = Play(_overlapPlayer, RestOverlap))),
-                        Rule(),
+                        Beat(),
                         Label("Box and image")
                             .FontSize(16)
                             .HCenter(),
@@ -149,6 +154,23 @@ sealed class MotionTimelinePage : Component
             .HFill()
             .Margin(0, 8, 0, 8)
             .BackgroundColor(Colors.Gray.WithAlpha(0.35f));
+
+    MauiReactor.VStack Beat()
+        => VStack(
+            Rule(),
+            Label("Beat")
+                .FontSize(16)
+                .HCenter(),
+            Caption("The name below changes when that beat starts. The timeline plays twice."),
+            Lane(Colors.MediumSeaGreen, 72, box => _beat = box, BindBeat),
+            Label(label => _beatName = label)
+                .Text("Waiting")
+                .FontSize(16)
+                .HCenter(),
+            Actions(Button("Play", () => _ = Play(_beatPlayer, RestBeat))),
+            Rule()
+        )
+        .Spacing(12);
 
     MauiReactor.VStack Twice()
         => VStack(
@@ -249,6 +271,13 @@ sealed class MotionTimelinePage : Component
             .Add(Motion.Define(m => m.TranslateX(0, 72)), id: "slide")
             .Then(Motion.Define(m => m.Rotate(0, 24)), id: "turn", offset: -180);
 
+    Motion BeatMotion()
+        => Motion.Timeline(duration: 560, easing: Easing.CubicOut, repeat: 2)
+            .Add(Motion.Define(m => m.TranslateX(0, 72)), id: "slide")
+            .Then(Motion.Define(m => m.FadeOut().WithDuration(200)), id: "fade")
+            .OnBeat("slide", () => ShowBeat("Slide"))
+            .OnBeat("fade", () => ShowBeat("Fade"));
+
     static Motion OffsetMotion()
         => Motion.Timeline(easing: Easing.CubicOut)
             .Add(Motion.Define(m => m.TranslateX(0, 48).WithDuration(300)), id: "slide", target: 0)
@@ -291,6 +320,22 @@ sealed class MotionTimelinePage : Component
         _overlapPlayer?.Dispose();
         RestOverlap();
         _overlapPlayer = OverlapMotion().Bind(_overlap);
+    }
+
+    void BindBeat()
+    {
+        if (_beat is null)
+            return;
+        _beatPlayer?.Dispose();
+        RestBeat();
+        _beatPlayer = BeatMotion().Bind(_beat);
+    }
+
+    void ShowBeat(string name)
+    {
+        if (_beatName is null)
+            return;
+        _beatName.Text = name;
     }
 
     void BindOffset()
@@ -373,6 +418,17 @@ sealed class MotionTimelinePage : Component
             return;
         _overlap.TranslationX = 0;
         _overlap.Rotation = 0;
+    }
+
+    void RestBeat()
+    {
+        if (_beat is not null)
+        {
+            _beat.TranslationX = 0;
+            _beat.Opacity = 1;
+        }
+
+        ShowBeat("Waiting");
     }
 
     void RestOffset()

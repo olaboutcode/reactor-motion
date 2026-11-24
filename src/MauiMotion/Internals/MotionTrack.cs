@@ -11,6 +11,9 @@ internal readonly record struct NamedSpan(string Id, double Begin, double End)
 {
     /// <summary>Beat that owns this window. <c>-1</c> until a timeline beat is assigned.</summary>
     public int BeatId { get; init; } = -1;
+
+    /// <summary>Runs when forward playback reaches <see cref="Begin"/>. Null runs nothing.</summary>
+    public Action? Enter { get; init; }
 }
 
 /// <summary>
