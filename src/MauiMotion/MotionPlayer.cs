@@ -703,7 +703,15 @@ public sealed class MotionPlayer : IDisposable
 
     void StepClock(double deltaMs)
     {
+        var previous = _elapsedMs;
         _elapsedMs += _direction * deltaMs;
+        if (TryWrapInfinite(previous))
+        {
+            Apply(LinearU);
+            ReportProgress();
+            return;
+        }
+
         if (_elapsedMs >= Duration)
         {
             _elapsedMs = Duration;
@@ -726,13 +734,42 @@ public sealed class MotionPlayer : IDisposable
         ReportProgress();
     }
 
+    /// <summary>
+    /// A beat with <c>Repeat(-1)</c> loops its own window. Later beats stay past that
+    /// window, so they do not start. Reverse is free to leave the window.
+    /// </summary>
+    bool TryWrapInfinite(double previous)
+    {
+        if (_direction <= 0 || Duration == 0)
+            return false;
+        if (!Motion.TryInfiniteLoop(out var start, out var length) || length == 0)
+            return false;
+
+        var end = (double)start + length;
+        if (_elapsedMs < end || previous >= end)
+            return false;
+
+        var span = _elapsedMs - start;
+        if (span < 0)
+            return false;
+
+        var mod = span % length;
+        _elapsedMs = start + mod;
+        _beatMark = start == 0 || Duration == 0 ? -1 : (start / (double)Duration) - 1e-12;
+        return true;
+    }
+
     void StepMixed(double deltaMs)
     {
+        var previous = _elapsedMs;
         _elapsedMs += _direction * deltaMs;
-        if (_direction > 0 && _elapsedMs > Duration)
-            _elapsedMs = Duration;
-        else if (_direction < 0 && _elapsedMs < 0)
-            _elapsedMs = 0;
+        if (!TryWrapInfinite(previous))
+        {
+            if (_direction > 0 && _elapsedMs > Duration)
+                _elapsedMs = Duration;
+            else if (_direction < 0 && _elapsedMs < 0)
+                _elapsedMs = 0;
+        }
 
         var u = LinearU;
         Apply(u);
@@ -1107,7 +1144,10 @@ public sealed class MotionPlayer : IDisposable
                         track.Easing ?? motion.Easing,
                         transform: track.Transform,
                         trackSpring: track.TrackSpring,
-                        trackSpringVelocity: track.TrackSpringVelocity));
+                        trackSpringVelocity: track.TrackSpringVelocity,
+                        reverse: track.Reverse,
+                        holdBefore: track.HoldBefore,
+                        holdAfter: track.HoldAfter));
                     continue;
                 }
 
@@ -1131,7 +1171,10 @@ public sealed class MotionPlayer : IDisposable
                         pathTo: track.PathTo,
                         trackSpring: track.TrackSpring,
                         trackSpringVelocity: track.TrackSpringVelocity,
-                        orient: track.Orient));
+                        orient: track.Orient,
+                        reverse: track.Reverse,
+                        holdBefore: track.HoldBefore,
+                        holdAfter: track.HoldAfter));
                     continue;
                 }
 
@@ -1150,7 +1193,10 @@ public sealed class MotionPlayer : IDisposable
                     motion.ColorSpace,
                     perspective: motion.PerspectiveEntry,
                     trackSpring: track.TrackSpring,
-                    trackSpringVelocity: track.TrackSpringVelocity));
+                    trackSpringVelocity: track.TrackSpringVelocity,
+                    reverse: track.Reverse,
+                    holdBefore: track.HoldBefore,
+                    holdAfter: track.HoldAfter));
             }
         }
 

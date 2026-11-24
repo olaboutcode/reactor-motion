@@ -753,8 +753,8 @@ m.Rotate(0, 180).Yoyo()
 
 | Member | Role |
 |---|---|
-| `Repeat(int count)` | How many forward passes to play. `1` is the default. `0` plays once. A negative count repeats until `Pause`, `Reset`, or `Dispose`. |
-| `Yoyo(bool enabled = true)` | After each forward pass, play the reverse. One repeat is forward plus reverse. |
+| `Repeat(int count)` | How many forward passes to play. `1` is the default. `0` plays once. A negative count repeats until `Pause`, `Reset`, or `Dispose`. On a timeline beat, the count belongs to that beat. |
+| `Yoyo(bool enabled = true)` | After each forward pass, play the reverse. One repeat is forward plus reverse. On a beat, the reverse pass is part of that beat. |
 
 The player continues by itself. It does not recapture `from` between cycles. The `Task` from `ForwardAsync` stays pending until the last cycle. `Pause` leaves that task pending. `Reset`, `Dispose`, and a canceled token cancel it, and the extension finishes without throwing.
 
@@ -923,6 +923,15 @@ Motion.Timeline(duration: 420, easing: Easing.CubicInOut, yoyo: true)
     .Add(Motion.Define(m => m.TranslateX(0, 80)));
 ```
 
+`Repeat` and `Yoyo` on a beat belong to that beat. The beat's window includes every cycle, and the next `Then` starts after them. `Repeat(2)` plays the beat twice. `Yoyo` plays it backward after each forward pass, so `Repeat(2).Yoyo()` is forward, back, forward, back. `Repeat(-1)` never finishes, so every later beat waits. A negative `Then` offset that overlaps the loop still plays on each pass. `repeat` and `yoyo` on `Timeline(...)` itself, and on the opening `Timeline(configure)` call, still belong to the whole timeline.
+
+```csharp
+Motion.Timeline(duration: 280, easing: Easing.CubicOut)
+    .Add(Motion.Define(m => m.FadeIn()))
+    .Then(Motion.Define(m => m.Scale(1, 1.12).Repeat(2).Yoyo()))
+    .Then(Motion.Define(m => m.FadeOut()));
+```
+
 `stagger` delays each bound view. The recipe is still one timeline. The second view starts 90 ms after the first, and the third 90 ms after the second.
 
 ```csharp
@@ -953,7 +962,7 @@ Motion.Timeline(m => m.FadeIn().SlideIn(SlideFrom.Left, 48), "intro")
 | `Then(Func<Motion, Motion> configure, string? id = null, int? target = null, int offset = 0)` | Builds a beat and appends it after the current span. `offset` is milliseconds from that end. Negative overlaps the previous beat. `target` picks one bound view. |
 | `Add(Func<Motion, Motion> configure, uint at = 0, string? id = null, int? target = null)` | Builds a beat and inserts it at `at` milliseconds. |
 | `And(Func<Motion, Motion> configure)` | Builds a recipe and plays it at the same time as the receiver. |
-| `Add(Motion child, uint at = 0, string? id = null, int? target = null)` | Inserts `child` at `at + child.Delay` milliseconds. Parent length becomes `max(current, at + child.Delay + child.Duration)`. The parent's own delay stays the player hold. `target` is the bind index. Null plays on every view. |
+| `Add(Motion child, uint at = 0, string? id = null, int? target = null)` | Inserts `child` at `at + child.Delay` milliseconds. A beat `Repeat` or `Yoyo` multiplies that window. The parent's own delay stays the player hold. `target` is the bind index. Null plays on every view. |
 | `Then(Motion next, string? id = null, int? target = null, int offset = 0)` | Appends `next` at `Duration + offset`. |
 | `OnBeat(string id, Action enter)` | Runs `enter` when forward playback reaches `id`, including each later repeat. |
 
@@ -1088,7 +1097,7 @@ A posed replacement still receives the spring speed of the properties it takes. 
 
 ## Samples
 
-`samples/Sample` is a MauiReactor gallery. Home lists the playground, stagger, scrub, color spaces, timeline, path, matrix, enter / exit, poses, drag, and collection. The playground includes slide out, scale out, width, and corner radius alongside the fades, springs, and keyframes. Stagger can start from the start, the center, or the end of the grid. Scrub seeks a fade and a cubic path. Color compares HSV, RGB, and three HSV stops. The timeline page plays a sequence with seek, an overlap, a beat name that changes when the beat starts, a box and an image on one timeline, a hold, a yoyo, a repeat, a stagger, and a spring. Path plays a cubic Bézier, a tangent-following arc, a quadratic hop, a cornered polyline, a slice of the cubic, and the arc walked backward. Matrix plays a turn, a tilt, and a flip. Enter / exit shows a slide and a scale. On the poses page, Play springs two cards toward an outline. Halfway, Pose comes back from the live position and keeps the spring speed. Snap jumps onto the outline, then comes back. On the drag page, one card follows the finger along a lane and springs to the nearer end. Another moves across a board and springs to the nearest corner. A third stays in place and grows as you drag, then springs to small or large. All three keep the speed of the flick. On the collection page, adding, removing, or moving an item plays the move on the items that stay. A removed item fades where it left. The items sit in a vertical stack.
+`samples/Sample` is a MauiReactor gallery. Home lists the playground, stagger, scrub, color spaces, timeline, path, matrix, enter / exit, poses, drag, and collection. The playground includes slide out, scale out, width, and corner radius alongside the fades, springs, and keyframes. Stagger can start from the start, the center, or the end of the grid. Scrub seeks a fade and a cubic path. Color compares HSV, RGB, and three HSV stops. The timeline page plays a sequence with seek, an overlap, a beat name that changes when the beat starts, a box and an image on one timeline, a hold, a yoyo, a repeat, a beat that plays twice before the fade, a stagger, and a spring. Path plays a cubic Bézier, a tangent-following arc, a quadratic hop, a cornered polyline, a slice of the cubic, and the arc walked backward. Matrix plays a turn, a tilt, and a flip. Enter / exit shows a slide and a scale. On the poses page, Play springs two cards toward an outline. Halfway, Pose comes back from the live position and keeps the spring speed. Snap jumps onto the outline, then comes back. On the drag page, one card follows the finger along a lane and springs to the nearer end. Another moves across a board and springs to the nearest corner. A third stays in place and grows as you drag, then springs to small or large. All three keep the speed of the flick. On the collection page, adding, removing, or moving an item plays the move on the items that stay. A removed item fades where it left. The items sit in a vertical stack.
 
 ## Building
 

@@ -50,6 +50,8 @@ public sealed class Motion
     readonly bool _place;
     readonly uint? _beatDuration;
     readonly IReadOnlyList<TimelineBeat> _beats;
+    readonly uint? _loopStart;
+    readonly uint _loopLength;
 
     Motion(
         uint duration,
@@ -72,7 +74,9 @@ public sealed class Motion
         bool? reduceMotion = null,
         bool pose = false,
         bool place = false,
-        uint? beatDuration = null)
+        uint? beatDuration = null,
+        uint? loopStart = null,
+        uint loopLength = 0)
     {
         Duration = duration;
         Easing = easing;
@@ -89,6 +93,8 @@ public sealed class Motion
         _durationSet = durationSet;
         _easingSet = easingSet;
         _beats = beats ?? [];
+        _loopStart = loopStart;
+        _loopLength = loopLength;
         Rate = rate;
         SpringVelocity = springVelocity;
         ReduceMotion = reduceMotion;
@@ -120,6 +126,37 @@ public sealed class Motion
     internal int RepeatCount => _repeat;
 
     internal bool YoyoEnabled => _yoyo;
+
+    /// <summary>
+    /// Window of the earliest beat that repeats forever, in milliseconds on this recipe.
+    /// Playback loops it. A following beat sits past the window and does not start.
+    /// </summary>
+    internal bool TryInfiniteLoop(out uint start, out uint length)
+    {
+        start = uint.MaxValue;
+        length = 0;
+        var found = false;
+        for (var i = 0; i < _beats.Count; i++)
+        {
+            var beat = _beats[i];
+            if (!beat.Infinite || beat.Length == 0 || beat.StartMs >= start)
+                continue;
+            found = true;
+            start = beat.StartMs;
+            length = beat.Length;
+        }
+
+        if (_loopStart is uint loop && _loopLength > 0 && loop < start)
+        {
+            start = loop;
+            length = _loopLength;
+            found = true;
+        }
+
+        if (!found)
+            start = 0;
+        return found;
+    }
 
     internal IReadOnlyList<MotionTrack> Tracks => _tracks;
 
@@ -187,8 +224,14 @@ public sealed class Motion
         if (_timeline && _beats.Count > 1)
             return RestretchBeats(milliseconds);
 
-        if (_timeline && _beats.Count == 1 && AllFullSpan(_tracks) && _beats[0].Delay == 0)
-            return ReplaceSingleBeat(milliseconds);
+        if (_timeline && _beats.Count == 1 && _beats[0].Delay == 0)
+        {
+            var beat = _beats[0];
+            if (beat.Cycles > 1 || beat.Infinite)
+                return RestretchBeats(milliseconds);
+            if (AllFullSpan(_tracks))
+                return ReplaceSingleBeat(milliseconds);
+        }
 
         return ApplyDuration(milliseconds);
     }
@@ -789,12 +832,17 @@ public sealed class Motion
     /// <summary>
     /// Play this motion <paramref name="count"/> times. <c>1</c> is once
     /// (default). <c>0</c> becomes <c>1</c>. <c>-1</c> repeats until Pause, Reset, or Dispose.
+    /// On a beat passed to <see cref="Add(Motion, uint, string?, int?)"/> or
+    /// <see cref="Then(Motion, string?, int?, int)"/>, the count belongs to that beat.
+    /// The window includes every cycle, and the next beat starts after them.
+    /// A negative count never finishes, so later beats wait.
     /// </summary>
     public Motion Repeat(int count)
         => Copy(repeat: count == 0 ? 1 : count);
 
     /// <summary>
     /// After each forward, play reverse. A repeat cycle is forward+reverse.
+    /// On a beat, that reverse pass is part of the beat's window.
     /// </summary>
     public Motion Yoyo(bool enabled = true)
         => Copy(yoyo: enabled);
@@ -803,9 +851,10 @@ public sealed class Motion
     /// Places <paramref name="child"/> on this timeline at
     /// <paramref name="at"/> milliseconds from the start. A later <see cref="WithDuration"/>
     /// leaves that time where it is. A delay on the child starts that much
-    /// later. Nested <see cref="Stagger"/> is ignored. Parent span is
-    /// <c>max(current, at + child.Delay + child.Duration)</c>. This motion's own
-    /// <see cref="Delay"/> stays the player hold. Duplicate <paramref name="id"/>
+    /// later. Nested <see cref="Stagger"/> is ignored. The beat window is the child
+    /// length times its <see cref="Repeat(int)"/> and <see cref="Yoyo(bool)"/> cycles.
+    /// Parent span is that window, placed at <c>at + child.Delay</c>, grown to fit.
+    /// This motion's own <see cref="Delay"/> stays the player hold. Duplicate <paramref name="id"/>
     /// values: last wins.
     /// <paramref name="target"/> follows the arguments of Bind. <c>0</c> is the first view, <c>1</c> the second.
     /// Null plays this beat on every bound view. A negative index throws.
@@ -895,6 +944,14 @@ public sealed class Motion
         var spans = ConcatSpans(
             ShiftSpans(_spans, Delay, Duration, span),
             ShiftSpans(other._spans, other.Delay, other.Duration, span));
+        var loopStart = ShiftedLoop(this, Delay, out var loopLength);
+        var otherStart = ShiftedLoop(other, other.Delay, out var otherLength);
+        if (otherStart is uint right && (loopStart is not uint left || right < left))
+        {
+            loopStart = right;
+            loopLength = otherLength;
+        }
+
         return new Motion(
             span,
             easing,
@@ -913,7 +970,20 @@ public sealed class Motion
             springVelocity: other._spring is not null ? other.SpringVelocity : SpringVelocity,
             reduceMotion: other.ReduceMotion ?? ReduceMotion,
             pose: _pose || other._pose,
-            place: _place || other._place);
+            place: _place || other._place,
+            loopStart: loopStart,
+            loopLength: loopLength);
+    }
+
+    static uint? ShiftedLoop(Motion motion, uint delay, out uint length)
+    {
+        if (!motion.TryInfiniteLoop(out var start, out length))
+        {
+            length = 0;
+            return null;
+        }
+
+        return ClampUInt((long)delay + start);
     }
 
     /// <summary>
@@ -958,7 +1028,8 @@ public sealed class Motion
     /// <paramref name="repeat"/>, <paramref name="yoyo"/>, <paramref name="rate"/>,
     /// <paramref name="reduceMotion"/>, <paramref name="stagger"/>, <paramref name="colorSpace"/>,
     /// <paramref name="perspective"/>, <paramref name="spring"/>, and <paramref name="pose"/>
-    /// belong to the timeline. <paramref name="duration"/> is ignored when
+    /// belong to the timeline. <see cref="Repeat(int)"/> and <see cref="Yoyo(bool)"/> inside a
+    /// beat belong to that beat. <paramref name="duration"/> is ignored when
     /// <paramref name="spring"/> is set. <paramref name="stagger"/> is ignored then too.
     /// </remarks>
     public static Motion Timeline(
@@ -1293,7 +1364,10 @@ public sealed class Motion
         bool? pose = null,
         bool? place = null,
         uint? beatDuration = null,
-        bool setBeatDuration = false)
+        bool setBeatDuration = false,
+        uint? loopStart = null,
+        uint loopLength = 0,
+        bool setLoop = false)
         => new(
             duration ?? Duration,
             easing ?? Easing,
@@ -1315,7 +1389,9 @@ public sealed class Motion
             setReduceMotion ? reduceMotion : ReduceMotion,
             pose ?? _pose,
             place ?? _place,
-            setBeatDuration ? beatDuration : _beatDuration);
+            setBeatDuration ? beatDuration : _beatDuration,
+            setLoop ? loopStart : _loopStart,
+            setLoop ? loopLength : _loopLength);
 
     static double SanitizeVelocity(double velocity)
         => double.IsNaN(velocity) || double.IsInfinity(velocity) ? 0 : velocity;
@@ -1535,45 +1611,53 @@ public sealed class Motion
             rootSpans = WithSpanBeat(rootSpans, 0, force: false);
         }
 
+        var pass = child._durationSet || _beatDuration is not uint beatLength ? child.Duration : beatLength;
+        var cycles = CyclesThatFit(pass, CyclesOf(child.RepeatCount, child.YoyoEnabled), childTracks.Count);
+        var window = WindowOf(pass, cycles);
+        var infinite = child.RepeatCount < 0;
+        childTracks = RepeatTracks(childTracks, cycles, child.YoyoEnabled);
         var placedOffset = followsEnd ? offset : 0;
         var origin = followsEnd ? (long)at + placedOffset : at;
         var childStart = ClampUInt(origin + child.Delay);
-        var childSpan = child._durationSet || _beatDuration is not uint beatLength ? child.Duration : beatLength;
-        var newSpan = Math.Max(Duration, childStart + childSpan);
+        var childEnd = ClampUInt((long)childStart + window);
+        var newSpan = Duration > childEnd ? Duration : childEnd;
         var existing = Duration == newSpan ? tracks : Rebase(tracks, Duration, newSpan);
-        var shifted = Shift(childTracks, childStart, childSpan, newSpan);
+        var shifted = Shift(childTracks, childStart, window, newSpan);
         if (target is int index)
             shifted = WithTarget(shifted, index);
-        var childSpans = ShiftSpans(child._spans, childStart, childSpan, newSpan);
+        var childSpans = ShiftSpans(child._spans, childStart, pass, newSpan);
         if (trackBeats)
         {
             var beatId = NextBeatId(beats);
             shifted = WithBeat(shifted, beatId);
             childSpans = WithSpanBeat(childSpans, beatId, force: true);
-            var grown = new TimelineBeat[beats.Count + 1];
-            for (var i = 0; i < beats.Count; i++)
-                grown[i] = beats[i];
-            grown[beats.Count] = new TimelineBeat(
-                beatId, at, followsEnd, child.Delay, childSpan, child._durationSet, childStart, placedOffset);
-            beats = grown;
+            beats = AppendBeat(beats, new TimelineBeat(
+                beatId, at, followsEnd, child.Delay, window, child._durationSet, childStart, placedOffset)
+            {
+                Cycles = cycles,
+                Infinite = infinite,
+            });
         }
 
         WarnOverlap(existing, shifted);
-
         var spans = ConcatSpans(
             Duration == newSpan ? rootSpans : RebaseSpans(rootSpans, Duration, newSpan),
             childSpans);
         if (!string.IsNullOrWhiteSpace(id) && newSpan > 0)
         {
-            var beatId = trackBeats ? beats[^1].Id : -1;
-            spans = PutSpan(spans, new NamedSpan(
-                id,
-                (double)childStart / newSpan,
-                (double)(childStart + childSpan) / newSpan)
+            spans = PutSpan(spans, new NamedSpan(id, (double)childStart / newSpan, (double)childEnd / newSpan)
             {
-                BeatId = beatId,
+                BeatId = trackBeats ? beats[^1].Id : -1,
             });
         }
+
+        var loopStart = _loopStart;
+        var loopLength = _loopLength;
+        var setLoop = false;
+        if (!infinite && child.TryInfiniteLoop(out var innerStart, out var innerLength))
+            setLoop = PreferLoop(ref loopStart, ref loopLength, ClampUInt((long)childStart + innerStart), innerLength);
+        else if (!trackBeats && infinite)
+            setLoop = PreferLoop(ref loopStart, ref loopLength, childStart, window);
 
         return Copy(
             duration: newSpan,
@@ -1581,7 +1665,97 @@ public sealed class Motion
             spans: spans,
             perspective: child._perspective,
             setPerspective: child._perspective.HasValue,
-            beats: beats);
+            beats: beats,
+            loopStart: loopStart,
+            loopLength: loopLength,
+            setLoop: setLoop);
+    }
+
+    static bool PreferLoop(ref uint? start, ref uint length, uint candidate, uint candidateLength)
+    {
+        if (candidateLength == 0 || (start is uint have && candidate >= have))
+            return false;
+        start = candidate;
+        length = candidateLength;
+        return true;
+    }
+
+    static TimelineBeat[] AppendBeat(IReadOnlyList<TimelineBeat> beats, TimelineBeat beat)
+    {
+        var grown = new TimelineBeat[beats.Count + 1];
+        for (var i = 0; i < beats.Count; i++)
+            grown[i] = beats[i];
+        grown[beats.Count] = beat;
+        return grown;
+    }
+
+    static int CyclesOf(int repeat, bool yoyo)
+    {
+        if (repeat < 0)
+            return yoyo ? 2 : 1;
+        var count = repeat == 0 ? 1 : repeat;
+        var cycles = count * (yoyo ? 2 : 1);
+        return cycles < 1 ? 1 : cycles;
+    }
+
+    static int CyclesThatFit(uint pass, int cycles, int trackCount)
+    {
+        if (cycles <= 1)
+            return 1;
+
+        var limited = (long)cycles;
+        if (pass > 0)
+        {
+            var maxByTime = (long)uint.MaxValue / pass;
+            if (limited > maxByTime)
+                limited = maxByTime;
+        }
+
+        var tracks = Math.Max(trackCount, 1);
+        var maxByTracks = (long)int.MaxValue / tracks;
+        if (limited > maxByTracks)
+            limited = maxByTracks;
+        return limited < 1 ? 1 : (int)limited;
+    }
+
+    static uint WindowOf(uint pass, int cycles)
+    {
+        if (cycles <= 1)
+            return pass;
+        var window = (long)pass * cycles;
+        if (window >= uint.MaxValue)
+            return uint.MaxValue;
+        return window <= 0 ? 0 : (uint)window;
+    }
+
+    static IReadOnlyList<MotionTrack> RepeatTracks(IReadOnlyList<MotionTrack> tracks, int cycles, bool yoyo)
+    {
+        if (cycles <= 1 || tracks.Count == 0)
+            return tracks;
+
+        var copy = new MotionTrack[tracks.Count * cycles];
+        var unit = 1d / cycles;
+        var last = cycles - 1;
+        var n = 0;
+        for (var cycle = 0; cycle < cycles; cycle++)
+        {
+            var reverse = yoyo && (cycle & 1) == 1;
+            var origin = cycle * unit;
+            for (var i = 0; i < tracks.Count; i++)
+            {
+                var track = tracks[i];
+                copy[n++] = track with
+                {
+                    Begin = origin + (track.Begin * unit),
+                    End = origin + (track.End * unit),
+                    Reverse = track.Reverse ^ reverse,
+                    HoldBefore = cycle == 0 && track.HoldBefore,
+                    HoldAfter = cycle == last && track.HoldAfter,
+                };
+            }
+        }
+
+        return copy;
     }
 
     Motion ApplyDuration(uint milliseconds)
@@ -1627,7 +1801,8 @@ public sealed class Motion
         for (var i = 0; i < count; i++)
         {
             var beat = _beats[i];
-            var length = beat.LengthLocked ? beat.Length : milliseconds;
+            var cycles = beat.Cycles < 1 ? 1 : beat.Cycles;
+            var length = beat.LengthLocked ? beat.Length : WindowOf(milliseconds, cycles);
             if (length != beat.Length)
                 changed = true;
             var origin = beat.FollowsEnd ? cursor + beat.Offset : beat.At;
@@ -1684,7 +1859,30 @@ public sealed class Motion
             };
         }
 
-        return Copy(duration: span, tracks: tracks, spans: spans, beats: beats);
+        var loopStart = _loopStart;
+        var loopLength = _loopLength;
+        var setLoop = false;
+        if (_loopStart is uint oldLoop && _loopLength > 0)
+        {
+            var mappedStart = MapBeatPoint(oldLoop, -1, _beats, placed);
+            var mappedEnd = MapBeatPoint(oldLoop + (double)_loopLength, -1, _beats, placed);
+            var mapped = mappedEnd - mappedStart;
+            if (mapped > 0)
+            {
+                loopStart = ClampUInt((long)Math.Round(mappedStart));
+                loopLength = ClampUInt((long)Math.Round(mapped));
+                setLoop = true;
+            }
+        }
+
+        return Copy(
+            duration: span,
+            tracks: tracks,
+            spans: spans,
+            beats: beats,
+            loopStart: loopStart,
+            loopLength: loopLength,
+            setLoop: setLoop);
     }
 
     static double MapBeatPoint(

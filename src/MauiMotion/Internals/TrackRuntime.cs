@@ -31,6 +31,9 @@ internal sealed class TrackRuntime
     readonly Spring? _trackSpring;
     readonly double _trackSpringVelocity;
     readonly bool _orient;
+    readonly bool _reverse;
+    readonly bool _holdBefore;
+    readonly bool _holdAfter;
     object? _from;
     object? _lastWritten;
     bool _loggedPinSkip;
@@ -79,7 +82,10 @@ internal sealed class TrackRuntime
         Func<double, Matrix4>? transform = null,
         Spring? trackSpring = null,
         double trackSpringVelocity = 0,
-        bool orient = false)
+        bool orient = false,
+        bool reverse = false,
+        bool holdBefore = true,
+        bool holdAfter = true)
     {
         _target = target;
         _property = property;
@@ -98,6 +104,9 @@ internal sealed class TrackRuntime
         _trackSpring = trackSpring;
         _trackSpringVelocity = trackSpringVelocity;
         _orient = orient;
+        _reverse = reverse;
+        _holdBefore = holdBefore;
+        _holdAfter = holdAfter;
         _implicitFrom = from is null;
     }
 
@@ -337,6 +346,10 @@ internal sealed class TrackRuntime
             return;
         if (TrackSpringOwnsFrame(u))
             return;
+        if (u < _begin && !_holdBefore)
+            return;
+        if (u > _end && !_holdAfter)
+            return;
 
         if (_transform is not null)
         {
@@ -346,12 +359,8 @@ internal sealed class TrackRuntime
 
         if (_path is not null)
         {
-            var pathLocal = LocalU(u);
-            var t = _pathFrom + (_pathTo - _pathFrom) * _easing.Ease(pathLocal);
-            if (u <= _begin || _end <= _begin)
-                t = _pathFrom;
-            else if (u >= _end)
-                t = _pathTo;
+            var pathLocal = Directed(u);
+            var t = _pathFrom + ((_pathTo - _pathFrom) * _easing.Ease(pathLocal));
             WritePoint(view, _path.PointAt(t), Heading(t));
             return;
         }
@@ -361,17 +370,17 @@ internal sealed class TrackRuntime
             return;
 
         PrepareColors();
-        var local = LocalU(u);
+        var local = Directed(u);
         object value;
         if (_keyframes is not null)
         {
             value = EvaluateKeyframes(local, _from);
         }
-        else if (u <= _begin || _end <= _begin)
+        else if (local <= 0)
         {
             value = _from;
         }
-        else if (u >= _end)
+        else if (local >= 1)
         {
             value = _to;
         }
@@ -529,12 +538,18 @@ internal sealed class TrackRuntime
     }
 
     double Eased(double u)
+        => _easing.Ease(Directed(u));
+
+    /// <summary>
+    /// 0–1 inside this slice. A reverse slice flips it, so the slice opens on
+    /// <c>To</c> and closes on <c>From</c>.
+    /// </summary>
+    double Directed(double u)
     {
-        if (u <= _begin || _end <= _begin)
+        if (_end <= _begin)
             return 0;
-        if (u >= _end)
-            return 1;
-        return _easing.Ease(LocalU(u));
+        var local = LocalU(u);
+        return _reverse ? 1d - local : local;
     }
 
     double LocalU(double u)

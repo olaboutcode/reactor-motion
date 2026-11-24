@@ -1,7 +1,7 @@
 namespace Sample.Components;
 
 /// <summary>
-/// Sequence, overlap, a beat callback, a box and an image on one timeline, hold, yoyo, repeat, stagger, and a spring.
+/// Sequence, overlap, a beat callback, a box and an image on one timeline, hold, yoyo, repeat, a beat that plays twice, stagger, and a spring.
 /// </summary>
 sealed class MotionTimelinePage : Component
 {
@@ -16,6 +16,7 @@ sealed class MotionTimelinePage : Component
     MauiControls.BoxView? _hold;
     MauiControls.BoxView? _yoyo;
     MauiControls.BoxView? _repeat;
+    MauiControls.BoxView? _pulse;
     MauiControls.BoxView? _spring;
     MauiControls.BoxView? _stagger0;
     MauiControls.BoxView? _stagger1;
@@ -28,6 +29,7 @@ sealed class MotionTimelinePage : Component
     MotionPlayer? _holdPlayer;
     MotionPlayer? _yoyoPlayer;
     MotionPlayer? _repeatPlayer;
+    MotionPlayer? _pulsePlayer;
     MotionPlayer? _staggerPlayer;
     MotionPlayer? _springPlayer;
 
@@ -40,6 +42,7 @@ sealed class MotionTimelinePage : Component
         _holdPlayer?.Dispose();
         _yoyoPlayer?.Dispose();
         _repeatPlayer?.Dispose();
+        _pulsePlayer?.Dispose();
         _staggerPlayer?.Dispose();
         _springPlayer?.Dispose();
         _sequencePlayer = null;
@@ -49,6 +52,7 @@ sealed class MotionTimelinePage : Component
         _holdPlayer = null;
         _yoyoPlayer = null;
         _repeatPlayer = null;
+        _pulsePlayer = null;
         _staggerPlayer = null;
         _springPlayer = null;
         base.OnWillUnmount();
@@ -121,6 +125,7 @@ sealed class MotionTimelinePage : Component
                         Lane(Colors.MediumPurple, 80, box => _yoyo = box, BindYoyo),
                         Actions(Button("Play", () => _ = Play(_yoyoPlayer, RestYoyo))),
                         Twice(),
+                        Pulse(),
                         Label("Stagger")
                             .FontSize(16)
                             .HCenter(),
@@ -181,6 +186,18 @@ sealed class MotionTimelinePage : Component
             Caption("The slide plays, then jumps back and plays again."),
             Lane(Colors.DarkOrange, 80, box => _repeat = box, BindRepeat),
             Actions(Button("Play", () => _ = Play(_repeatPlayer, RestRepeat))),
+            Rule()
+        )
+        .Spacing(12);
+
+    MauiReactor.VStack Pulse()
+        => VStack(
+            Label("Pulse")
+                .FontSize(16)
+                .HCenter(),
+            Caption("This slide plays twice. The fade starts after the second play."),
+            Lane(Colors.DarkCyan, 72, box => _pulse = box, BindPulse),
+            Actions(Button("Play", () => _ = Play(_pulsePlayer, RestPulse))),
             Rule()
         )
         .Spacing(12);
@@ -296,6 +313,11 @@ sealed class MotionTimelinePage : Component
         => Motion.Timeline(duration: 420, easing: Easing.CubicInOut, repeat: 2)
             .Add(Motion.Define(m => m.TranslateX(0, 80)));
 
+    static Motion PulseMotion()
+        => Motion.Timeline(duration: 280, easing: Easing.CubicInOut)
+            .Add(Motion.Define(m => m.TranslateX(0, 72).Repeat(2)))
+            .Then(Motion.Define(m => m.FadeOut().WithDuration(200)));
+
     static Motion StaggerMotion()
         => Motion.Timeline(duration: 320, easing: Easing.CubicOut, stagger: new Stagger(90))
             .Add(Motion.Define(m => m.FadeIn().TranslateY(16, 0)));
@@ -372,6 +394,15 @@ sealed class MotionTimelinePage : Component
         _repeatPlayer?.Dispose();
         RestRepeat();
         _repeatPlayer = RepeatMotion().Bind(_repeat);
+    }
+
+    void BindPulse()
+    {
+        if (_pulse is null)
+            return;
+        _pulsePlayer?.Dispose();
+        RestPulse();
+        _pulsePlayer = PulseMotion().Bind(_pulse);
     }
 
     void BindStagger()
@@ -460,6 +491,14 @@ sealed class MotionTimelinePage : Component
         if (_repeat is null)
             return;
         _repeat.TranslationX = 0;
+    }
+
+    void RestPulse()
+    {
+        if (_pulse is null)
+            return;
+        _pulse.TranslationX = 0;
+        _pulse.Opacity = 1;
     }
 
     void RestStagger()

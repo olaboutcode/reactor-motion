@@ -692,4 +692,248 @@ public sealed class MotionTimelineTests
         var same = motion.OnBeat("missing", () => { });
         Assert.Same(motion, same);
     }
+
+    [Fact]
+    public void Beat_repeat_plays_twice_and_the_next_beat_starts_after()
+    {
+        var box = new BoxView { TranslationX = 0, Opacity = 0 };
+        var clock = new MotionClock(manual: true);
+        var motion = Motion.Timeline(duration: 100, easing: Easing.Linear)
+            .Add(m => m.TranslateX(0, 100).Repeat(2), id: "slide")
+            .Then(m => m.Opacity(0, 1).WithDuration(100), id: "fade");
+        var player = MotionPlayer.Create(motion, [box], clock);
+
+        Assert.Equal(300u, motion.Duration);
+        Assert.Equal(1, motion.RepeatCount);
+        Assert.False(motion.YoyoEnabled);
+        Assert.True(player.TrySpan("slide", out var slideBegin, out var slideEnd));
+        Assert.True(player.TrySpan("fade", out var fadeBegin, out var fadeEnd));
+        Assert.Equal(0, slideBegin, 3);
+        Assert.Equal(200d / 300d, slideEnd, 3);
+        Assert.Equal(200d / 300d, fadeBegin, 3);
+        Assert.Equal(1, fadeEnd, 3);
+
+        var task = player.ForwardAsync();
+        clock.Tick(25);
+        Assert.Equal(25, box.TranslationX, 3);
+        Assert.Equal(0, box.Opacity, 3);
+        clock.Tick(100);
+        Assert.Equal(25, box.TranslationX, 3);
+        Assert.Equal(0, box.Opacity, 3);
+        clock.Tick(125);
+        Assert.Equal(100, box.TranslationX, 3);
+        Assert.Equal(0.5, box.Opacity, 3);
+        clock.Tick(50);
+        Assert.True(task.IsCompletedSuccessfully);
+        Assert.Equal(1, box.Opacity, 3);
+    }
+
+    [Fact]
+    public void Beat_yoyo_plays_back_before_the_next_beat()
+    {
+        var box = new BoxView { TranslationX = 0, Opacity = 0 };
+        var clock = new MotionClock(manual: true);
+        var motion = Motion.Timeline(duration: 100, easing: Easing.Linear)
+            .Add(m => m.TranslateX(0, 100).Yoyo(), id: "slide")
+            .Then(m => m.Opacity(0, 1).WithDuration(100), id: "fade");
+        var player = MotionPlayer.Create(motion, [box], clock);
+
+        Assert.Equal(300u, motion.Duration);
+        Assert.False(motion.YoyoEnabled);
+        var task = player.ForwardAsync();
+        clock.Tick(25);
+        Assert.Equal(25, box.TranslationX, 3);
+        clock.Tick(100);
+        Assert.Equal(75, box.TranslationX, 3);
+        Assert.Equal(0, box.Opacity, 3);
+        clock.Tick(125);
+        Assert.Equal(0, box.TranslationX, 3);
+        Assert.Equal(0.5, box.Opacity, 3);
+        clock.Tick(50);
+        Assert.True(task.IsCompletedSuccessfully);
+    }
+
+    [Fact]
+    public void Beat_repeat_and_yoyo_include_every_pass()
+    {
+        var box = new BoxView { TranslationX = 0, Opacity = 0 };
+        var clock = new MotionClock(manual: true);
+        var motion = Motion.Timeline(duration: 100, easing: Easing.Linear)
+            .Add(m => m.TranslateX(0, 100).Repeat(2).Yoyo())
+            .Then(m => m.Opacity(0, 1).WithDuration(100));
+        var player = MotionPlayer.Create(motion, [box], clock);
+
+        Assert.Equal(500u, motion.Duration);
+        _ = player.ForwardAsync();
+        clock.Tick(50);
+        Assert.Equal(50, box.TranslationX, 3);
+        clock.Tick(100);
+        Assert.Equal(50, box.TranslationX, 3);
+        clock.Tick(100);
+        Assert.Equal(50, box.TranslationX, 3);
+        clock.Tick(100);
+        Assert.Equal(50, box.TranslationX, 3);
+        Assert.Equal(0, box.Opacity, 3);
+        clock.Tick(100);
+        Assert.Equal(0, box.TranslationX, 3);
+        Assert.Equal(0.5, box.Opacity, 3);
+    }
+
+    [Fact]
+    public void Beat_repeat_keeps_its_cycles_when_the_timeline_duration_changes()
+    {
+        var motion = Motion.Timeline(duration: 100, easing: Easing.Linear)
+            .Add(m => m.TranslateX(0, 100).Repeat(2), id: "slide")
+            .Then(m => m.Opacity(0, 1).WithDuration(50), id: "fade")
+            .WithDuration(200);
+        var player = MotionPlayer.Create(motion, [new BoxView { Opacity = 0 }], new MotionClock(manual: true));
+
+        Assert.Equal(450u, motion.Duration);
+        Assert.True(player.TrySpan("slide", out _, out var slideEnd));
+        Assert.True(player.TrySpan("fade", out var fadeBegin, out _));
+        Assert.Equal(400d / 450d, slideEnd, 3);
+        Assert.Equal(400d / 450d, fadeBegin, 3);
+    }
+
+    [Fact]
+    public void Locked_beat_repeat_keeps_its_window()
+    {
+        var motion = Motion.Timeline(duration: 100, easing: Easing.Linear)
+            .Add(m => m.TranslateX(0, 100).WithDuration(100).Repeat(2), id: "slide")
+            .Then(m => m.Opacity(0, 1), id: "fade")
+            .WithDuration(400);
+        var player = MotionPlayer.Create(motion, [new BoxView()], new MotionClock(manual: true));
+
+        Assert.Equal(600u, motion.Duration);
+        Assert.True(player.TrySpan("slide", out _, out var slideEnd));
+        Assert.True(player.TrySpan("fade", out var fadeBegin, out _));
+        Assert.Equal(200d / 600d, slideEnd, 3);
+        Assert.Equal(200d / 600d, fadeBegin, 3);
+    }
+
+    [Fact]
+    public void Timeline_repeat_stays_on_the_timeline()
+    {
+        var shared = Motion.Timeline(duration: 100, repeat: 3, yoyo: true)
+            .Add(m => m.TranslateX(0, 10));
+        Assert.Equal(100u, shared.Duration);
+        Assert.Equal(3, shared.RepeatCount);
+        Assert.True(shared.YoyoEnabled);
+
+        var opening = Motion.Timeline(m => m.TranslateX(0, 10).WithDuration(80).Repeat(4));
+        Assert.Equal(80u, opening.Duration);
+        Assert.Equal(4, opening.RepeatCount);
+    }
+
+    [Fact]
+    public void Plain_then_repeat_extends_the_following_beat()
+    {
+        var box = new BoxView { TranslationX = 0, Opacity = 0 };
+        var clock = new MotionClock(manual: true);
+        var motion = Motion.None.WithDuration(0)
+            .Then(m => m.TranslateX(0, 100).WithDuration(100).WithEasing(Easing.Linear).Repeat(2))
+            .Then(m => m.Opacity(0, 1).WithDuration(100).WithEasing(Easing.Linear));
+        var player = MotionPlayer.Create(motion, [box], clock);
+
+        Assert.Equal(300u, motion.Duration);
+        Assert.Equal(1, motion.RepeatCount);
+        _ = player.ForwardAsync();
+        clock.Tick(150);
+        Assert.Equal(50, box.TranslationX, 3);
+        Assert.Equal(0, box.Opacity, 3);
+        clock.Tick(100);
+        Assert.Equal(0.5, box.Opacity, 3);
+    }
+
+    [Fact]
+    public void Infinite_beat_holds_every_later_beat()
+    {
+        var calls = 0;
+        var box = new BoxView { TranslationX = 0, Opacity = 0 };
+        var clock = new MotionClock(manual: true);
+        var motion = Motion.Timeline(duration: 100, easing: Easing.Linear)
+            .Add(m => m.TranslateX(0, 100).Repeat(-1), id: "loop")
+            .Then(m => m.Opacity(0, 1).WithDuration(100), id: "after")
+            .OnBeat("loop", () => calls++);
+        var player = MotionPlayer.Create(motion, [box], clock);
+
+        Assert.Equal(200u, motion.Duration);
+        var task = player.ForwardAsync();
+        Assert.Equal(1, calls);
+        clock.Tick(50);
+        Assert.Equal(50, box.TranslationX, 3);
+        Assert.Equal(0, box.Opacity, 3);
+        clock.Tick(50);
+        Assert.Equal(0, box.TranslationX, 3);
+        Assert.Equal(2, calls);
+        for (var i = 0; i < 10; i++)
+            clock.Tick(100);
+        Assert.False(task.IsCompleted);
+        Assert.Equal(0, box.Opacity, 3);
+        Assert.Equal(12, calls);
+    }
+
+    [Fact]
+    public void Infinite_beat_yoyo_loops_the_pair()
+    {
+        var box = new BoxView { TranslationX = 0 };
+        var clock = new MotionClock(manual: true);
+        var motion = Motion.Timeline(duration: 100, easing: Easing.Linear)
+            .Add(m => m.TranslateX(0, 100).Repeat(-1).Yoyo());
+        var player = MotionPlayer.Create(motion, [box], clock);
+
+        Assert.Equal(200u, motion.Duration);
+        var task = player.ForwardAsync();
+        clock.Tick(100);
+        Assert.Equal(100, box.TranslationX, 3);
+        clock.Tick(50);
+        Assert.Equal(50, box.TranslationX, 3);
+        clock.Tick(50);
+        Assert.Equal(0, box.TranslationX, 3);
+        Assert.False(task.IsCompleted);
+    }
+
+    [Fact]
+    public void Infinite_beat_replays_an_overlapping_later_beat()
+    {
+        var box = new BoxView { TranslationX = 0, Opacity = 0 };
+        var clock = new MotionClock(manual: true);
+        var motion = Motion.Timeline(easing: Easing.Linear)
+            .Add(m => m.TranslateX(0, 100).WithDuration(100).Repeat(-1))
+            .Then(m => m.Opacity(0, 1).WithDuration(100), offset: -40);
+        var player = MotionPlayer.Create(motion, [box], clock);
+
+        Assert.Equal(160u, motion.Duration);
+        var task = player.ForwardAsync();
+        clock.Tick(80);
+        Assert.Equal(80, box.TranslationX, 3);
+        Assert.Equal(0.2, box.Opacity, 3);
+        clock.Tick(20);
+        Assert.Equal(0, box.TranslationX, 3);
+        Assert.Equal(0, box.Opacity, 3);
+        clock.Tick(80);
+        Assert.Equal(80, box.TranslationX, 3);
+        Assert.Equal(0.2, box.Opacity, 3);
+        Assert.False(task.IsCompleted);
+    }
+
+    [Fact]
+    public void Reverse_leaves_an_infinite_beat()
+    {
+        var box = new BoxView { TranslationX = 0 };
+        var clock = new MotionClock(manual: true);
+        var motion = Motion.Timeline(duration: 100, easing: Easing.Linear)
+            .Add(m => m.TranslateX(0, 100).Repeat(-1));
+        var player = MotionPlayer.Create(motion, [box], clock);
+
+        var forward = player.ForwardAsync();
+        clock.Tick(40);
+        Assert.Equal(40, box.TranslationX, 3);
+        var reverse = player.ReverseAsync();
+        Assert.True(forward.IsCompletedSuccessfully);
+        clock.Tick(40);
+        Assert.True(reverse.IsCompletedSuccessfully);
+        Assert.Equal(0, box.TranslationX, 3);
+        Assert.Equal(MotionPlaybackStatus.Dismissed, player.Status);
+    }
 }

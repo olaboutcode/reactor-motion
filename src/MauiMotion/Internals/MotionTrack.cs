@@ -22,6 +22,7 @@ internal readonly record struct NamedSpan(string Id, double Begin, double End)
 /// <c>FollowsEnd</c> means the child was placed with <c>Then</c> and moves when earlier beats change length.
 /// <c>Offset</c> is milliseconds from that end. Negative overlaps the previous beat. It is 0 for an absolute <c>Add</c>.
 /// <c>LengthLocked</c> means the child called <c>WithDuration</c> and a later timeline <c>WithDuration</c> leaves it alone.
+/// <c>Cycles</c> is the forward and reverse passes baked into <c>Length</c>. <c>Infinite</c> loops that window.
 /// </summary>
 internal readonly record struct TimelineBeat(
     int Id,
@@ -31,7 +32,14 @@ internal readonly record struct TimelineBeat(
     uint Length,
     bool LengthLocked,
     uint StartMs,
-    int Offset = 0);
+    int Offset = 0)
+{
+    /// <summary>Passes stored in <see cref="Length"/>. One forward pass is <c>1</c>. Yoyo makes a pair.</summary>
+    public int Cycles { get; init; } = 1;
+
+    /// <summary>When true, playback loops <see cref="Length"/> and later beats do not start.</summary>
+    public bool Infinite { get; init; }
+}
 
 /// <summary>
 /// Channels that are not a <see cref="BindableProperty"/>. <see cref="SemanticTrack.None"/>
@@ -93,6 +101,15 @@ internal readonly record struct MotionTrack(
     /// Index of the bound view this track plays on. Null plays on every bound view.
     /// </summary>
     public int? Target { get; init; }
+
+    /// <summary>Play this slice from <c>To</c> back to <c>From</c>. A yoyo pass sets it.</summary>
+    public bool Reverse { get; init; }
+
+    /// <summary>Write <c>From</c> before <c>Begin</c>. A later cycle of the same beat leaves this off.</summary>
+    public bool HoldBefore { get; init; } = true;
+
+    /// <summary>Write the end value after <c>End</c>. An earlier cycle of the same beat leaves this off.</summary>
+    public bool HoldAfter { get; init; } = true;
 }
 
 /// <summary>
