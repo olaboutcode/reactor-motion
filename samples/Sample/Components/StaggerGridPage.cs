@@ -5,11 +5,18 @@ sealed class StaggerGridPage : Component
     readonly MauiControls.BoxView?[] _tiles = new MauiControls.BoxView?[12];
     MotionPlayer? _player;
 
+    protected override void OnWillUnmount()
+    {
+        _player?.Dispose();
+        _player = null;
+        base.OnWillUnmount();
+    }
+
     public override VisualNode Render()
         => ContentPage(
             Grid("auto,*", "*",
                 NavigationBar
-                    .BackNavigation("Home")
+                    .BackNavigation("Stagger grid")
                     .GridRow(0),
                 VStack(
                     Grid(
@@ -19,7 +26,18 @@ sealed class StaggerGridPage : Component
                     )
                     .ColumnSpacing(8)
                     .RowSpacing(8),
-                    Button("Play stagger", Play)
+                    Label("Start follows the list. Center leaves the middle for last. End runs backward.")
+                        .FontSize(14)
+                        .HCenter()
+                        .HorizontalTextAlignment(TextAlignment.Center)
+                        .TextColor(Colors.Gray),
+                    HStack(
+                        Button("Start", () => Play(StaggerFrom.Start)),
+                        Button("Center", () => Play(StaggerFrom.Center)),
+                        Button("End", () => Play(StaggerFrom.End))
+                    )
+                    .Spacing(8)
+                    .HCenter()
                 )
                 .Spacing(16)
                 .Padding(16)
@@ -42,7 +60,7 @@ sealed class StaggerGridPage : Component
         }
     }
 
-    void Play()
+    void Play(StaggerFrom from)
     {
         var views = _tiles.OfType<MauiControls.BoxView>().ToArray();
         if (views.Length == 0)
@@ -53,7 +71,7 @@ sealed class StaggerGridPage : Component
             m => m
                 .FadeIn()
                 .Scale(0.9, 1)
-                .Stagger(40, StaggerFrom.Start, (3, 4))
+                .Stagger(40, from, (3, 4))
                 .WithDuration(280),
             views);
     }

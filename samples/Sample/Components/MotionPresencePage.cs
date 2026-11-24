@@ -2,11 +2,12 @@ namespace Sample.Components;
 
 sealed class MotionPresencePageState
 {
-    public bool Present { get; set; } = true;
+    public bool Slide { get; set; } = true;
+    public bool Scale { get; set; } = true;
 }
 
 /// <summary>
-/// Toggles a card. The card stays on screen until the exit run finishes.
+/// Toggles a slide card and a scale card. Each stays until its exit finishes.
 /// </summary>
 sealed class MotionPresencePage : Component<MotionPresencePageState>
 {
@@ -16,40 +17,55 @@ sealed class MotionPresencePage : Component<MotionPresencePageState>
                 NavigationBar
                     .BackNavigation("Enter / exit")
                     .GridRow(0),
-                VStack(
-                    Label("Enter / exit")
-                        .FontSize(28)
-                        .HCenter(),
-                    Label("Hide leaves from the current pose and waits until the exit finishes.")
-                        .FontSize(14)
-                        .HCenter()
-                        .TextColor(Colors.Gray),
-                    Grid("140", "*",
-                        Grid("*,auto,*", "*",
-                            Card()
+                ScrollView(
+                    VStack(
+                        Label("Hide leaves from the current pose and waits until the exit finishes.")
+                            .FontSize(14)
+                            .HCenter()
+                            .HorizontalTextAlignment(TextAlignment.Center)
+                            .TextColor(Colors.Gray),
+                        Label("Slide")
+                            .FontSize(16)
+                            .HCenter(),
+                        Stage(
+                            Card(Colors.MediumPurple)
                                 .EnterExit(
-                                    State.Present,
+                                    State.Slide,
                                     enter: m => m.FadeIn().SlideIn(SlideFrom.Bottom, 28).WithDuration(900),
-                                    exit: m => m.FadeOut().SlideOut(SlideFrom.Bottom, 20).WithDuration(700).WithPose())
-                                .GridRow(1)
-                        )
-                    ),
-                    Button(State.Present ? "Hide" : "Show", () => SetState(s => s.Present = !s.Present))
-                        .HCenter()
+                                    exit: m => m.FadeOut().SlideOut(SlideFrom.Bottom, 20).WithDuration(700).WithPose())),
+                        Button(State.Slide ? "Hide" : "Show", () => SetState(s => s.Slide = !s.Slide))
+                            .HCenter(),
+                        Label("Scale")
+                            .FontSize(16)
+                            .HCenter(),
+                        Stage(
+                            Card(Colors.CornflowerBlue)
+                                .EnterExit(
+                                    State.Scale,
+                                    enter: m => m.FadeIn().ScaleIn(0.6).WithDuration(700),
+                                    exit: m => m.FadeOut().ScaleOut(0.6).WithDuration(500).WithPose())),
+                        Button(State.Scale ? "Hide" : "Show", () => SetState(s => s.Scale = !s.Scale))
+                            .HCenter()
+                    )
+                    .Spacing(16)
+                    .Padding(24, 24, 24, 32)
                 )
-                .Spacing(16)
-                .Padding(24)
-                .VCenter()
                 .GridRow(1)
+                .VerticalScrollBarVisibility(ScrollBarVisibility.Never)
             )
         )
         .HideNavigationBar();
 
-    static MauiReactor.BoxView Card()
+    static MauiReactor.Grid Stage(VisualNode card)
+        => Grid("140", "*",
+            Grid("*,auto,*", "*",
+                card.GridRow(1)));
+
+    static MauiReactor.BoxView Card(Color color)
         => BoxView()
             .HeightRequest(96)
             .WidthRequest(96)
             .CornerRadius(16)
-            .BackgroundColor(Colors.MediumPurple)
+            .BackgroundColor(color)
             .HCenter();
 }

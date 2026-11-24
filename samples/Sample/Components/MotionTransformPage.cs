@@ -18,15 +18,25 @@ sealed class MotionTransformPage : Component
         .WithDuration(700)
         .WithEasing(Easing.CubicOut));
 
+    static readonly Motion Flip = Motion.Define(m => m
+        .Transform(t => Matrix4.Identity
+            .SetEntry(3, 2, 0.004)
+            .RotateX(t * Math.PI))
+        .WithDuration(800)
+        .WithEasing(Easing.CubicInOut));
+
     MotionPlayer? _turnPlayer;
     MotionPlayer? _tiltPlayer;
+    MotionPlayer? _flipPlayer;
 
     protected override void OnWillUnmount()
     {
         _turnPlayer?.Dispose();
         _tiltPlayer?.Dispose();
+        _flipPlayer?.Dispose();
         _turnPlayer = null;
         _tiltPlayer = null;
+        _flipPlayer = null;
         base.OnWillUnmount();
     }
 
@@ -34,33 +44,33 @@ sealed class MotionTransformPage : Component
         => ContentPage(
             Grid("auto,*", "*",
                 NavigationBar
-                    .BackNavigation("Home")
+                    .BackNavigation("Matrix")
                     .GridRow(0),
-                VStack(
-                    Label("Matrix")
-                        .FontSize(28)
-                        .HCenter(),
-                    Label("One callback returns the whole transform.")
-                        .FontSize(14)
-                        .HCenter()
-                        .TextColor(Colors.Gray),
+                ScrollView(
                     VStack(
-                        Card("Turn and drop", Colors.OrangeRed, Turn, player => _turnPlayer = player),
-                        Card("Tilt and grow", Colors.CornflowerBlue, Tilt, player => _tiltPlayer = player),
-                        HStack(
-                            Button("Play", Play),
-                            Button("Reverse", Reverse),
-                            Button("Reset", ResetBoth)
+                        Label("One callback returns the whole transform.")
+                            .FontSize(14)
+                            .HCenter()
+                            .TextColor(Colors.Gray),
+                        VStack(
+                            Card("Turn and drop", Colors.OrangeRed, Turn, player => _turnPlayer = player),
+                            Card("Tilt and grow", Colors.CornflowerBlue, Tilt, player => _tiltPlayer = player),
+                            Card("Flip", Colors.MediumPurple, Flip, player => _flipPlayer = player),
+                            HStack(
+                                Button("Play", Play),
+                                Button("Reverse", Reverse),
+                                Button("Reset", ResetAll)
+                            )
+                            .Spacing(10)
+                            .HCenter()
                         )
-                        .Spacing(10)
-                        .HCenter()
+                        .Spacing(28)
                     )
-                    .Spacing(16*6)
+                    .Spacing(16)
+                    .Padding(24, 24, 24, 32)
                 )
-                .Spacing(16)
-                .Padding(24)
-                .VCenter()
                 .GridRow(1)
+                .VerticalScrollBarVisibility(ScrollBarVisibility.Never)
             )
         )
         .HideNavigationBar();
@@ -86,17 +96,20 @@ sealed class MotionTransformPage : Component
     {
         _turnPlayer?.Forward();
         _tiltPlayer?.Forward();
+        _flipPlayer?.Forward();
     }
 
     void Reverse()
     {
         _turnPlayer?.Reverse();
         _tiltPlayer?.Reverse();
+        _flipPlayer?.Reverse();
     }
 
-    void ResetBoth()
+    void ResetAll()
     {
         _turnPlayer?.Reset();
         _tiltPlayer?.Reset();
+        _flipPlayer?.Reset();
     }
 }

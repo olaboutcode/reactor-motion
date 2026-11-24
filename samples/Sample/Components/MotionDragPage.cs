@@ -1,12 +1,14 @@
 namespace Sample.Components;
 
 /// <summary>
-/// Drag along a lane, or across a board onto a corner. Release keeps the drag speed.
+/// Drag along a lane, across a board onto a corner, or sideways to grow a card. Release keeps the drag speed.
 /// </summary>
 sealed class MotionDragPage : Component
 {
     const double Travel = 180;
     const double TravelY = 120;
+    const double GrowTravel = 140;
+    const double GrowScale = 1.6;
     const double Card = 56;
     const double LaneWidth = Travel + Card;
     const double BoardWidth = Travel + Card;
@@ -23,13 +25,12 @@ sealed class MotionDragPage : Component
                     .GridRow(0),
                 ScrollView(
                     VStack(
-                        Label("Drag")
-                            .FontSize(28)
-                            .HCenter(),
                         Caption("Drag the card along the lane. Let go and it springs to the nearer end, still moving at your speed."),
                         Lane(),
                         Caption("Drag the card anywhere in the board. Let go and it springs to the nearest corner, still moving at your speed."),
-                        Board()
+                        Board(),
+                        Caption("Drag the card sideways. Let go and it springs to small or large, still moving at your speed."),
+                        Grow()
                     )
                     .Spacing(16)
                     .Padding(24, 24, 24, 32)
@@ -84,12 +85,34 @@ sealed class MotionDragPage : Component
             .BackgroundColor(Colors.Gray.WithAlpha(0.12f))
             .HCenter();
 
+    static MauiReactor.Grid Grow()
+        => Grid($"{Card * GrowScale}", $"{GrowTravel * 2}",
+            BoxView()
+                .WidthRequest(Card * GrowScale)
+                .HeightRequest(Card * GrowScale)
+                .CornerRadius(12)
+                .BackgroundColor(Colors.MediumPurple.WithAlpha(0.18f))
+                .HCenter()
+                .VCenter()
+                .InputTransparent(inputTransparent: true),
+            CardView(Colors.MediumPurple)
+                .HCenter()
+                .VCenter()
+                .Drag(ReleaseSpring, plane => plane.X(
+                    motion => motion.Scale(1, GrowScale).WithDuration(400).WithEasing(Easing.Linear),
+                    travel: GrowTravel))
+        )
+        .HCenter();
+
     static MauiReactor.BoxView CardView()
+        => CardView(Colors.Teal);
+
+    static MauiReactor.BoxView CardView(Color color)
         => BoxView()
             .WidthRequest(Card)
             .HeightRequest(Card)
             .CornerRadius(12)
-            .BackgroundColor(Colors.Teal)
+            .BackgroundColor(color)
             .HStart()
             // The pan sits on the wrapper. The card lets that touch through.
             .InputTransparent(inputTransparent: true);

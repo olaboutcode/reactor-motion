@@ -14,7 +14,11 @@ sealed class MotionPlaygroundPage : Component<MotionPlaygroundPageState>
         new("Reduce motion", box => { box.Opacity = 0; box.TranslationX = -48; }, m => m.FadeIn().SlideIn(SlideFrom.Left, 48).WithReduceMotion(true)),
         new("Fade out", box => box.Opacity = 1, m => m.FadeOut()),
         new("Slide in", box => { box.Opacity = 0; box.TranslationX = -40; }, m => m.FadeIn().SlideIn(SlideFrom.Left, 40)),
+        new("Slide out", box => box.TranslationX = 0, m => m.SlideOut(SlideFrom.Right, 72)),
         new("Scale in", box => { box.Opacity = 0; box.ScaleX = 0.85; box.ScaleY = 0.85; }, m => m.FadeIn().ScaleIn()),
+        new("Scale out", box => { box.ScaleX = 1; box.ScaleY = 1; }, m => m.ScaleOut(0.6)),
+        new("Widen", box => box.WidthRequest = 96, m => m.Width(96, 180)),
+        new("Round", box => box.CornerRadius = new CornerRadius(16), m => m.CornerRadius(new CornerRadius(16), new CornerRadius(48))),
         new("Pulse", box => { box.ScaleX = 1; box.ScaleY = 1; }, m => m.Scale(1, 1.12)),
         new("Spring pop", box => { box.ScaleX = 1; box.ScaleY = 1; }, m => m.Scale(1, 1.16).WithSpring(Spring.Snappy), Timed: false),
         new("Spring kick", box => box.TranslationX = 0, m => m.TranslateX(0, 72).WithSpring(Spring.Snappy, velocity: 8), Timed: false),
@@ -56,9 +60,6 @@ sealed class MotionPlaygroundPage : Component<MotionPlaygroundPageState>
                     .BackNavigation("Playground")
                     .GridRow(0),
                 VStack(
-                    Label("Motion")
-                        .FontSize(28)
-                        .HCenter(),
                     Label("Pick a recipe, then forward / reverse")
                         .FontSize(14)
                         .HCenter()
@@ -135,6 +136,9 @@ sealed class MotionPlaygroundPage : Component<MotionPlaygroundPageState>
         _box.RotationY = 0;
         _box.AnchorX = 0.5;
         _box.AnchorY = 0.5;
+        _box.WidthRequest = 96;
+        _box.HeightRequest = 96;
+        _box.CornerRadius = new CornerRadius(16);
         Recipes[recipe].Rest(_box);
     }
 

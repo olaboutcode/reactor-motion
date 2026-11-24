@@ -36,9 +36,6 @@ sealed class MotionPosePage : Component
                     .BackNavigation("Poses")
                     .GridRow(0),
                 VStack(
-                    Label("Poses")
-                        .FontSize(28)
-                        .HCenter(),
                     Label("Halfway to the outline, Pose comes back from the card and keeps its speed. Snap jumps to the outline.")
                         .FontSize(14)
                         .HCenter()

@@ -1,7 +1,7 @@
 namespace Sample.Components;
 
 /// <summary>
-/// Sequence, overlap, a box and an image on one timeline, hold, yoyo, stagger, and a spring.
+/// Sequence, overlap, a box and an image on one timeline, hold, yoyo, repeat, stagger, and a spring.
 /// </summary>
 sealed class MotionTimelinePage : Component
 {
@@ -13,6 +13,7 @@ sealed class MotionTimelinePage : Component
     MauiControls.Image? _offsetImage;
     MauiControls.BoxView? _hold;
     MauiControls.BoxView? _yoyo;
+    MauiControls.BoxView? _repeat;
     MauiControls.BoxView? _spring;
     MauiControls.BoxView? _stagger0;
     MauiControls.BoxView? _stagger1;
@@ -23,6 +24,7 @@ sealed class MotionTimelinePage : Component
     MotionPlayer? _offsetPlayer;
     MotionPlayer? _holdPlayer;
     MotionPlayer? _yoyoPlayer;
+    MotionPlayer? _repeatPlayer;
     MotionPlayer? _staggerPlayer;
     MotionPlayer? _springPlayer;
 
@@ -33,6 +35,7 @@ sealed class MotionTimelinePage : Component
         _offsetPlayer?.Dispose();
         _holdPlayer?.Dispose();
         _yoyoPlayer?.Dispose();
+        _repeatPlayer?.Dispose();
         _staggerPlayer?.Dispose();
         _springPlayer?.Dispose();
         _sequencePlayer = null;
@@ -40,6 +43,7 @@ sealed class MotionTimelinePage : Component
         _offsetPlayer = null;
         _holdPlayer = null;
         _yoyoPlayer = null;
+        _repeatPlayer = null;
         _staggerPlayer = null;
         _springPlayer = null;
         base.OnWillUnmount();
@@ -49,13 +53,10 @@ sealed class MotionTimelinePage : Component
         => ContentPage(
             Grid("auto,*", "*",
                 NavigationBar
-                    .BackNavigation("Home")
+                    .BackNavigation("Timeline")
                     .GridRow(0),
                 ScrollView(
                     VStack(
-                        Label("Timeline")
-                            .FontSize(28)
-                            .HCenter(),
                         Caption("The timeline carries the defaults. Each beat keeps a duration or easing it set itself."),
                         Label("Sequence")
                             .FontSize(16)
@@ -114,7 +115,7 @@ sealed class MotionTimelinePage : Component
                         Caption("It moves across, then the same beat plays backward."),
                         Lane(Colors.MediumPurple, 80, box => _yoyo = box, BindYoyo),
                         Actions(Button("Play", () => _ = Play(_yoyoPlayer, RestYoyo))),
-                        Rule(),
+                        Twice(),
                         Label("Stagger")
                             .FontSize(16)
                             .HCenter(),
@@ -148,6 +149,19 @@ sealed class MotionTimelinePage : Component
             .HFill()
             .Margin(0, 8, 0, 8)
             .BackgroundColor(Colors.Gray.WithAlpha(0.35f));
+
+    MauiReactor.VStack Twice()
+        => VStack(
+            Rule(),
+            Label("Twice")
+                .FontSize(16)
+                .HCenter(),
+            Caption("The slide plays, then jumps back and plays again."),
+            Lane(Colors.DarkOrange, 80, box => _repeat = box, BindRepeat),
+            Actions(Button("Play", () => _ = Play(_repeatPlayer, RestRepeat))),
+            Rule()
+        )
+        .Spacing(12);
 
     static MauiReactor.Label Caption(string text)
         => Label(text)
@@ -249,6 +263,10 @@ sealed class MotionTimelinePage : Component
         => Motion.Timeline(duration: 420, easing: Easing.CubicInOut, yoyo: true)
             .Add(Motion.Define(m => m.TranslateX(0, 80)));
 
+    static Motion RepeatMotion()
+        => Motion.Timeline(duration: 420, easing: Easing.CubicInOut, repeat: 2)
+            .Add(Motion.Define(m => m.TranslateX(0, 80)));
+
     static Motion StaggerMotion()
         => Motion.Timeline(duration: 320, easing: Easing.CubicOut, stagger: new Stagger(90))
             .Add(Motion.Define(m => m.FadeIn().TranslateY(16, 0)));
@@ -300,6 +318,15 @@ sealed class MotionTimelinePage : Component
         _yoyoPlayer?.Dispose();
         RestYoyo();
         _yoyoPlayer = YoyoMotion().Bind(_yoyo);
+    }
+
+    void BindRepeat()
+    {
+        if (_repeat is null)
+            return;
+        _repeatPlayer?.Dispose();
+        RestRepeat();
+        _repeatPlayer = RepeatMotion().Bind(_repeat);
     }
 
     void BindStagger()
@@ -370,6 +397,13 @@ sealed class MotionTimelinePage : Component
         if (_yoyo is null)
             return;
         _yoyo.TranslationX = 0;
+    }
+
+    void RestRepeat()
+    {
+        if (_repeat is null)
+            return;
+        _repeat.TranslationX = 0;
     }
 
     void RestStagger()

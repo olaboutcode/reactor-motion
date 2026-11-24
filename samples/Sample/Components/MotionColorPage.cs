@@ -4,15 +4,19 @@ sealed class MotionColorPage : Component
 {
     MauiControls.BoxView? _hsv;
     MauiControls.BoxView? _rgb;
+    MauiControls.BoxView? _stops;
     MotionPlayer? _hsvPlayer;
     MotionPlayer? _rgbPlayer;
+    MotionPlayer? _stopsPlayer;
 
     protected override void OnWillUnmount()
     {
         _hsvPlayer?.Dispose();
         _rgbPlayer?.Dispose();
+        _stopsPlayer?.Dispose();
         _hsvPlayer = null;
         _rgbPlayer = null;
+        _stopsPlayer = null;
         base.OnWillUnmount();
     }
 
@@ -20,15 +24,13 @@ sealed class MotionColorPage : Component
         => ContentPage(
             Grid("auto,*", "*",
                 NavigationBar
-                    .BackNavigation("Home")
+                    .BackNavigation("Color lerp")
                     .GridRow(0),
                 VStack(
-                    Label("Color lerp")
-                        .FontSize(28)
-                        .HCenter(),
-                    Label("HSV takes the short hue. RGB mixes channels.")
+                    Label("HSV takes the short hue. RGB mixes channels. Stops walk red, blue, then lime.")
                         .FontSize(14)
                         .HCenter()
+                        .HorizontalTextAlignment(TextAlignment.Center)
                         .TextColor(Colors.Gray),
                     HStack(
                         Swatch("HSV", b => _hsv = b, BindHsv),
@@ -36,6 +38,8 @@ sealed class MotionColorPage : Component
                     )
                     .Spacing(24)
                     .HCenter(),
+                    Swatch("Stops", b => _stops = b, BindStops)
+                        .HCenter(),
                     Button("Play", Play)
                         .HCenter()
                 )
@@ -89,11 +93,30 @@ sealed class MotionColorPage : Component
             _rgb);
     }
 
+    void BindStops()
+    {
+        if (_stops is null)
+            return;
+        _stopsPlayer?.Dispose();
+        _stopsPlayer = Motion.Bind(
+            Motion.Define(m => m
+                .BackgroundColor(k => k
+                    .At(0, Colors.Red)
+                    .At(0.5, Colors.Blue)
+                    .At(1, Colors.Lime))
+                .WithDuration(1200)
+                .WithEasing(Easing.Linear)
+                .WithColorSpace(ColorSpace.Hsv)),
+            _stops);
+    }
+
     void Play()
     {
         _hsv?.SetValue(VisualElement.BackgroundColorProperty, Colors.Red);
         _rgb?.SetValue(VisualElement.BackgroundColorProperty, Colors.Red);
+        _stops?.SetValue(VisualElement.BackgroundColorProperty, Colors.Red);
         _hsvPlayer.Forward();
         _rgbPlayer.Forward();
+        _stopsPlayer.Forward();
     }
 }

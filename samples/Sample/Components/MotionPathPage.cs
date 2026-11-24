@@ -2,19 +2,29 @@ using Microsoft.Maui.Controls.Shapes;
 
 namespace Sample.Components;
 
+/// <summary>
+/// Cubic and quadratic curves, an arc, a cornered polyline, a slice of a curve, and a return trip.
+/// </summary>
 sealed class MotionPathPage : Component
 {
-    MauiControls.BoxView? _bezier;
-    MauiControls.BoxView? _arc;
-    MotionPlayer? _bezierPlayer;
-    MotionPlayer? _arcPlayer;
+    readonly Lane[] _lanes =
+    [
+        new("Bézier", "A cubic curve. The square does not turn.", Colors.OrangeRed, Bezier(), 200),
+        new("Arc", "A clockwise arc. The bar turns along the tangent.", Colors.CornflowerBlue, Arc(), 180, orient: true, markerWidth: 44, markerHeight: 16, corner: 4),
+        new("Quadratic", "One control point pulls the hop upward.", Colors.Teal, Quadratic(), 200),
+        new("Corners", "Straight segments. The bar turns at each corner.", Colors.MediumPurple, Corners(), 180, orient: true, markerWidth: 44, markerHeight: 16, corner: 4),
+        new("Middle", "The same cubic, from a quarter of its length to three quarters.", Colors.Coral, Bezier(), 200, from: 0.25, to: 0.75),
+        new("Return", "The arc again, walked from the end back to the start.", Colors.OrangeRed, Arc(), 180, from: 1, to: 0, orient: true, markerWidth: 44, markerHeight: 16, corner: 4),
+    ];
 
     protected override void OnWillUnmount()
     {
-        _bezierPlayer?.Dispose();
-        _arcPlayer?.Dispose();
-        _bezierPlayer = null;
-        _arcPlayer = null;
+        foreach (var lane in _lanes)
+        {
+            lane.Player?.Dispose();
+            lane.Player = null;
+        }
+
         base.OnWillUnmount();
     }
 
@@ -22,111 +32,97 @@ sealed class MotionPathPage : Component
         => ContentPage(
             Grid("auto,*", "*",
                 NavigationBar
-                    .BackNavigation("Home")
+                    .BackNavigation("Path")
                     .GridRow(0),
-                VStack(
-                    Label("Path")
-                        .FontSize(28)
+                ScrollView(
+                    VStack([
+                        Caption("Each marker follows a geometry. A bar also turns to match the tangent."),
+                        HStack(
+                            Button("Play", Play),
+                            Button("Reset", ResetAll)
+                        )
+                        .Spacing(8)
                         .HCenter(),
-                    Label("Top: cubic Bézier. Bottom: clockwise arc, turned along the tangent.")
-                        .FontSize(14)
-                        .HCenter()
-                        .TextColor(Colors.Gray),
-                    Lane("Bézier", b => _bezier = b, BindBezier, Colors.OrangeRed, 200),
-                    Lane("Arc", b => _arc = b, BindArc, Colors.CornflowerBlue, 160, 44, 16, 4),
-                    
-                    HStack(
-                        Button("Play", Play),
-                        Button("Reset", () =>
-                        {
-                            _bezierPlayer?.Reset();
-                            _arcPlayer?.Reset();
-                            Reset(_bezier);
-                            Reset(_arc);
-                        })
-                    ).HCenter()
+                        .. _lanes.Select(Stage),
+                    ])
+                    .Spacing(16)
+                    .Padding(24, 24, 24, 32)
                 )
-                .Spacing(16)
-                .Padding(24)
-                .VCenter()
                 .GridRow(1)
+                .VerticalScrollBarVisibility(ScrollBarVisibility.Never)
             )
         )
         .HideNavigationBar();
 
-    static VStack Lane(
-        string title,
-        Action<MauiControls.BoxView?> capture,
-        Action onLoaded,
-        Color color,
-        double height,
-        double markerWidth = 36,
-        double markerHeight = 36,
-        double corner = 18)
+    VisualNode Stage(Lane lane)
         => VStack(
-            Label(title)
-                .FontSize(14)
-                .TextColor(Colors.Gray),
+            Label(lane.Title)
+                .FontSize(16)
+                .HCenter(),
+            Caption(lane.Detail),
             Grid(
                 BoxView()
                     .BackgroundColor(Colors.Transparent)
-                    .HeightRequest(height),
-                BoxView(capture)
-                    .HeightRequest(markerHeight)
-                    .WidthRequest(markerWidth)
-                    .CornerRadius(corner)
-                    .BackgroundColor(color)
+                    .HeightRequest(lane.Height),
+                BoxView(box => lane.Marker = box)
+                    .HeightRequest(lane.MarkerHeight)
+                    .WidthRequest(lane.MarkerWidth)
+                    .CornerRadius(lane.Corner)
+                    .BackgroundColor(lane.Color)
                     .HStart()
                     .VCenter()
-                    .OnLoaded(onLoaded)
+                    .OnLoaded(() => Bind(lane))
             )
-            .HeightRequest(height)
+            .HeightRequest(lane.Height)
         )
         .Spacing(4);
 
-    void BindBezier()
-    {
-        if (_bezier is null)
-            return;
-        _bezierPlayer?.Dispose();
-        Reset(_bezier);
-        _bezierPlayer = Motion.Bind(
-            Motion.Define(m => m
-                .Path(Bezier())
-                .WithDuration(900)
-                .WithEasing(Easing.SinInOut)),
-            _bezier);
-    }
+    static MauiReactor.Label Caption(string text)
+        => Label(text)
+            .FontSize(14)
+            .HCenter()
+            .HorizontalTextAlignment(TextAlignment.Center)
+            .TextColor(Colors.Gray);
 
-    void BindArc()
+    static void Bind(Lane lane)
     {
-        if (_arc is null)
+        if (lane.Marker is null)
             return;
-        _arcPlayer?.Dispose();
-        Reset(_arc);
-        _arcPlayer = Motion.Bind(
+        lane.Player?.Dispose();
+        Park(lane.Marker);
+        lane.Player = Motion.Bind(
             Motion.Define(m => m
-                .Path(Arc(), orient: true)
-                .WithDuration(900)
+                .Path(lane.Geometry, lane.From, lane.To, lane.Orient)
+                .WithDuration(1000)
                 .WithEasing(Easing.SinInOut)),
-            _arc);
+            lane.Marker);
     }
 
     void Play()
     {
-        Reset(_bezier);
-        Reset(_arc);
-        _bezierPlayer.Forward();
-        _arcPlayer.Forward();
+        foreach (var lane in _lanes)
+        {
+            Park(lane.Marker);
+            lane.Player.Forward();
+        }
     }
 
-    static void Reset(MauiControls.BoxView? orb)
+    void ResetAll()
     {
-        if (orb is null)
+        foreach (var lane in _lanes)
+        {
+            lane.Player?.Reset();
+            Park(lane.Marker);
+        }
+    }
+
+    static void Park(MauiControls.BoxView? marker)
+    {
+        if (marker is null)
             return;
-        orb.TranslationX = 0;
-        orb.TranslationY = 0;
-        orb.Rotation = 0;
+        marker.TranslationX = 0;
+        marker.TranslationY = 0;
+        marker.Rotation = 0;
     }
 
     static PathGeometry Bezier()
@@ -139,6 +135,31 @@ sealed class MotionPathPage : Component
             Point2 = new Point(170, 90),
             Point3 = new Point(260, 0),
         });
+        geometry.Figures.Add(figure);
+        return geometry;
+    }
+
+    static PathGeometry Quadratic()
+    {
+        var geometry = new PathGeometry();
+        var figure = new PathFigure { StartPoint = new Point(0, 24) };
+        figure.Segments.Add(new QuadraticBezierSegment
+        {
+            Point1 = new Point(130, -110),
+            Point2 = new Point(260, 24),
+        });
+        geometry.Figures.Add(figure);
+        return geometry;
+    }
+
+    static PathGeometry Corners()
+    {
+        var geometry = new PathGeometry();
+        var figure = new PathFigure { StartPoint = new Point(0, 24) };
+        figure.Segments.Add(new LineSegment { Point = new Point(90, 24) });
+        figure.Segments.Add(new LineSegment { Point = new Point(90, -56) });
+        figure.Segments.Add(new LineSegment { Point = new Point(190, -56) });
+        figure.Segments.Add(new LineSegment { Point = new Point(190, 16) });
         geometry.Figures.Add(figure);
         return geometry;
     }
@@ -156,5 +177,33 @@ sealed class MotionPathPage : Component
         });
         geometry.Figures.Add(figure);
         return geometry;
+    }
+
+    sealed class Lane(
+        string title,
+        string detail,
+        Color color,
+        PathGeometry geometry,
+        double height,
+        double from = 0,
+        double to = 1,
+        bool orient = false,
+        double markerWidth = 36,
+        double markerHeight = 36,
+        double corner = 18)
+    {
+        public string Title { get; } = title;
+        public string Detail { get; } = detail;
+        public Color Color { get; } = color;
+        public PathGeometry Geometry { get; } = geometry;
+        public double Height { get; } = height;
+        public double From { get; } = from;
+        public double To { get; } = to;
+        public bool Orient { get; } = orient;
+        public double MarkerWidth { get; } = markerWidth;
+        public double MarkerHeight { get; } = markerHeight;
+        public double Corner { get; } = corner;
+        public MauiControls.BoxView? Marker { get; set; }
+        public MotionPlayer? Player { get; set; }
     }
 }

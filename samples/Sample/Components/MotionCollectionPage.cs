@@ -30,10 +30,6 @@ sealed class MotionCollectionPage : Component<MotionCollectionPageState>
                     .GridRow(0),
                 ScrollView(
                     VStack(
-                        Label("Collection")
-                            .FontSize(28)
-                            .HCenter(),
-                        
                         Caption("Add, delete, or move an item. The others slide from where they were. A deleted item fades in place."),
                         
                         Button("Add An Item", Add)
