@@ -17,6 +17,7 @@ internal readonly record struct NamedSpan(string Id, double Begin, double End)
 /// One flattened child on a <see cref="Motion"/> built with <c>Timeline</c>.
 /// <c>StartMs</c> is where the child's tracks sit on the parent clock.
 /// <c>FollowsEnd</c> means the child was placed with <c>Then</c> and moves when earlier beats change length.
+/// <c>Offset</c> is milliseconds from that end. Negative overlaps the previous beat. It is 0 for an absolute <c>Add</c>.
 /// <c>LengthLocked</c> means the child called <c>WithDuration</c> and a later timeline <c>WithDuration</c> leaves it alone.
 /// </summary>
 internal readonly record struct TimelineBeat(
@@ -26,7 +27,8 @@ internal readonly record struct TimelineBeat(
     uint Delay,
     uint Length,
     bool LengthLocked,
-    uint StartMs);
+    uint StartMs,
+    int Offset = 0);
 
 /// <summary>
 /// Channels that are not a <see cref="BindableProperty"/>. <see cref="SemanticTrack.None"/>

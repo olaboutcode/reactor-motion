@@ -882,12 +882,20 @@ The intro uses the timeline's 280 ms and `CubicOut`. The pulse set its own 200 m
 
 `duration` is the default beat length, not the finished timeline. The timeline grows as you add beats. The same call also takes repeat, yoyo, rate, reduce-motion, stagger, color space, perspective, spring, spring velocity, and pose.
 
-`Add` at a time overlaps that beat with whatever is already playing. The turn below starts 140 ms into the slide. Both beats use the 320 ms default.
+`Add` places a beat at `at` milliseconds from the start of the timeline. The turn below starts when the slide is at 140 ms. Both beats use the 320 ms default. A later `WithDuration` leaves that `at` where it is, so the turn still begins 140 ms after the slide started.
 
 ```csharp
 Motion.Timeline(duration: 320, easing: Easing.CubicOut)
     .Add(Motion.Define(m => m.TranslateX(0, 72)), id: "slide")
     .Add(Motion.Define(m => m.Rotate(0, 24)), at: 140, id: "turn");
+```
+
+`Then` measures from the previous beat's end. `offset: 80` starts 80 ms after that end. `offset: -80` starts 80 ms before it, and the start clamps at 0. A later `WithDuration` keeps that distance from the new end. A beat's own `WithDelay` still waits after the offset start.
+
+```csharp
+Motion.Timeline(duration: 320, easing: Easing.CubicOut)
+    .Add(Motion.Define(m => m.TranslateX(0, 72)), id: "slide")
+    .Then(Motion.Define(m => m.FadeIn().WithDuration(80)), id: "fade", offset: -80);
 ```
 
 `target` follows the arguments of `Bind`. `0` is the first view, `1` is the second. Any `VisualElement` can take either place. Below, the box slides for 300 ms and the image starts a 300 ms turn 100 ms later. Omit `target` and that beat plays on every bound view. A beat with a target ignores stagger.
@@ -942,17 +950,17 @@ Motion.Timeline(m => m.FadeIn().SlideIn(SlideFrom.Left, 48), "intro")
 |---|---|
 | `Timeline(uint? duration = null, Easing? easing = null, uint delay = 0, int repeat = 1, bool yoyo = false, double rate = 1, bool? reduceMotion = null, Stagger? stagger = null, ColorSpace colorSpace = ColorSpace.Hsv, double? perspective = null, Spring? spring = null, double springVelocity = 0, bool pose = false)` | Empty timeline. `duration` and `easing` fill beats that did not set their own. The other arguments belong to the timeline. |
 | `Timeline(Func<Motion, Motion> configure, string? id = null)` | Builds the first beat. The result is a timeline, so a later `WithDuration` / `WithEasing` applies to every beat that did not set its own. |
-| `Then(Func<Motion, Motion> configure, string? id = null, int? target = null)` | Builds a beat and appends it after the current span. `target` picks one bound view. |
+| `Then(Func<Motion, Motion> configure, string? id = null, int? target = null, int offset = 0)` | Builds a beat and appends it after the current span. `offset` is milliseconds from that end. Negative overlaps the previous beat. `target` picks one bound view. |
 | `Add(Func<Motion, Motion> configure, uint at = 0, string? id = null, int? target = null)` | Builds a beat and inserts it at `at` milliseconds. |
 | `And(Func<Motion, Motion> configure)` | Builds a recipe and plays it at the same time as the receiver. |
 | `Add(Motion child, uint at = 0, string? id = null, int? target = null)` | Inserts `child` at `at + child.Delay` milliseconds. Parent length becomes `max(current, at + child.Delay + child.Duration)`. The parent's own delay stays the player hold. `target` is the bind index. Null plays on every view. |
-| `Then(Motion next, string? id = null, int? target = null)` | `Add(next, Duration, id, target)`. |
+| `Then(Motion next, string? id = null, int? target = null, int offset = 0)` | Appends `next` at `Duration + offset`. |
 
 Children are flattened immediately. Their tracks are shifted in milliseconds and are not stretched. A nested `Stagger` is ignored. If two tracks write the same property of the same view in overlapping time, the later one wins and a debug build logs the overlap.
 
 `id` records a named window as a fraction of the parent length. Duplicate ids keep the last one. `Seek(id)` and `TrySpan` read those windows. See [Seek](#seek).
 
-`WithDuration` on a `Timeline` sets every beat that did not call `WithDuration`, then lays the beats out again. A `Then` beat follows the new end. An `Add` beat keeps its `at`. A child `WithDelay` stays a gap before that beat. `WithEasing` sets the curve for every beat that did not call `WithEasing`. A beat that did call it keeps that curve.
+`WithDuration` on a `Timeline` sets every beat that did not call `WithDuration`, then lays the beats out again. A `Then` beat follows the new end, keeping its `offset`. An `Add` beat keeps its `at`. A child `WithDelay` stays a gap before that beat. `WithEasing` sets the curve for every beat that did not call `WithEasing`. A beat that did call it keeps that curve.
 
 `Motion.None` is already 300 ms long, even with no tracks. Adding a 100 ms child onto a bare `None` produces a 300 ms parent, and the child occupies the first 100 ms. That form is not a `Timeline`: `WithDuration` on it still pads the end instead of setting each beat.
 

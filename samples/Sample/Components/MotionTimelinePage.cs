@@ -71,7 +71,7 @@ sealed class MotionTimelinePage : Component
                         Label("Overlap")
                             .FontSize(16)
                             .HCenter(),
-                        Caption("The slide is 320 ms. The turn starts 140 ms in."),
+                        Caption("The slide is 320 ms. The turn starts 180 ms before it ends."),
                         Lane(Colors.Teal, 72, box => _overlap = box, BindOverlap),
                         Actions(Button("Play", () => _ = Play(_overlapPlayer, RestOverlap))),
                         Rule(),
@@ -247,7 +247,7 @@ sealed class MotionTimelinePage : Component
     static Motion OverlapMotion()
         => Motion.Timeline(duration: 320, easing: Easing.CubicOut)
             .Add(Motion.Define(m => m.TranslateX(0, 72)), id: "slide")
-            .Add(Motion.Define(m => m.Rotate(0, 24)), at: 140, id: "turn");
+            .Then(Motion.Define(m => m.Rotate(0, 24)), id: "turn", offset: -180);
 
     static Motion OffsetMotion()
         => Motion.Timeline(easing: Easing.CubicOut)

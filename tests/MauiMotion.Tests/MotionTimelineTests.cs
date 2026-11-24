@@ -362,6 +362,69 @@ public sealed class MotionTimelineTests
     }
 
     [Fact]
+    public void Then_offset_overlaps_the_previous_end()
+    {
+        var box = new BoxView { Opacity = 0, TranslationX = 0 };
+        var clock = new MotionClock(manual: true);
+        var motion = Motion.Timeline(duration: 320, easing: Easing.Linear)
+            .Add(m => m.TranslateX(0, 320), id: "slide")
+            .Then(m => m.Opacity(0, 1).WithDuration(80), id: "fade", offset: -80);
+
+        Assert.Equal(320u, motion.Duration);
+        var player = MotionPlayer.Create(motion, [box], clock);
+        Assert.True(player.TrySpan("fade", out var begin, out var end));
+        Assert.Equal(240d / 320d, begin, 3);
+        Assert.Equal(1, end, 3);
+
+        _ = player.ForwardAsync();
+        clock.Tick(240);
+        Assert.Equal(240, box.TranslationX, 3);
+        Assert.Equal(0, box.Opacity, 3);
+        clock.Tick(40);
+        Assert.Equal(280, box.TranslationX, 3);
+        Assert.Equal(0.5, box.Opacity, 3);
+    }
+
+    [Fact]
+    public void Then_offset_moves_with_the_previous_beat()
+    {
+        var motion = Motion.Timeline(m => m.TranslateX(0, 72), "slide")
+            .Then(m => m.Opacity(0, 1).WithDuration(80).WithEasing(Easing.Linear), "fade", offset: -80)
+            .WithDuration(640)
+            .WithEasing(Easing.Linear);
+        var player = MotionPlayer.Create(motion, [new BoxView()], new MotionClock(manual: true));
+
+        Assert.Equal(640u, motion.Duration);
+        Assert.True(player.TrySpan("slide", out var slideBegin, out var slideEnd));
+        Assert.True(player.TrySpan("fade", out var begin, out var end));
+        Assert.Equal(0, slideBegin, 3);
+        Assert.Equal(1, slideEnd, 3);
+        Assert.Equal(560d / 640d, begin, 3);
+        Assert.Equal(1, end, 3);
+    }
+
+    [Fact]
+    public void Then_offset_clamps_at_zero_until_the_previous_beat_grows()
+    {
+        var motion = Motion.Timeline(duration: 40, easing: Easing.Linear)
+            .Add(m => m.Opacity(0, 1), id: "slide")
+            .Then(m => m.TranslateX(0, 10).WithDuration(40), id: "fade", offset: -80);
+        var player = MotionPlayer.Create(motion, [new BoxView()], new MotionClock(manual: true));
+
+        Assert.Equal(40u, motion.Duration);
+        Assert.True(player.TrySpan("fade", out var begin, out var end));
+        Assert.Equal(0, begin, 3);
+        Assert.Equal(1, end, 3);
+
+        motion = motion.WithDuration(200);
+        player = MotionPlayer.Create(motion, [new BoxView()], new MotionClock(manual: true));
+        Assert.Equal(200u, motion.Duration);
+        Assert.True(player.TrySpan("fade", out begin, out end));
+        Assert.Equal(120d / 200d, begin, 3);
+        Assert.Equal(160d / 200d, end, 3);
+    }
+
+    [Fact]
     public void Timeline_and_runs_inside_the_first_beat()
     {
         var box = new BoxView { Opacity = 0, TranslationX = 0 };

@@ -311,7 +311,7 @@ public sealed class MotionPlayer : IDisposable
 
     /// <summary>
     /// Linear 0–1 of <see cref="Duration"/> (player span after stagger) for a
-    /// named <see cref="Motion.Add(Motion, uint, string?, int?)"/> / <see cref="Motion.Then(Motion, string?, int?)"/> child.
+    /// named <see cref="Motion.Add(Motion, uint, string?, int?)"/> / <see cref="Motion.Then(Motion, string?, int?, int)"/> child.
     /// </summary>
     public bool TrySpan(string id, out double begin, out double end)
     {

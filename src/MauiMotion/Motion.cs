@@ -801,7 +801,8 @@ public sealed class Motion
 
     /// <summary>
     /// Places <paramref name="child"/> on this timeline at
-    /// <paramref name="at"/> milliseconds. A delay on the child starts that much
+    /// <paramref name="at"/> milliseconds from the start. A later <see cref="WithDuration"/>
+    /// leaves that time where it is. A delay on the child starts that much
     /// later. Nested <see cref="Stagger"/> is ignored. Parent span is
     /// <c>max(current, at + child.Delay + child.Duration)</c>. This motion's own
     /// <see cref="Delay"/> stays the player hold. Duplicate <paramref name="id"/>
@@ -823,22 +824,24 @@ public sealed class Motion
     }
 
     /// <summary>
-    /// Appends <paramref name="next"/> after the current span. A delay on
-    /// <paramref name="next"/> waits that much longer.
-    /// Use <see cref="Add(Motion, uint, string?, int?)"/> to start at 0.
+    /// Appends <paramref name="next"/> after the current span.
+    /// <paramref name="offset"/> is milliseconds from that end. Positive waits, negative overlaps the previous beat.
+    /// The start clamps at 0. A delay on <paramref name="next"/> waits that much longer.
+    /// On a timeline, a later <see cref="WithDuration"/> keeps this offset from the new end.
+    /// Use <see cref="Add(Motion, uint, string?, int?)"/> to start at an absolute time.
     /// <paramref name="target"/> follows the arguments of Bind. <c>0</c> is the first view, <c>1</c> the second.
     /// </summary>
-    public Motion Then(Motion next, string? id = null, int? target = null)
-        => Add(next, Duration, id, followsEnd: true, target);
+    public Motion Then(Motion next, string? id = null, int? target = null, int offset = 0)
+        => Add(next, Duration, id, followsEnd: true, target, offset);
 
     /// <summary>
     /// Builds <paramref name="configure"/> from an empty motion and appends it
-    /// after the current span. Same rules as <see cref="Then(Motion, string?, int?)"/>.
+    /// after the current span. Same rules as <see cref="Then(Motion, string?, int?, int)"/>.
     /// </summary>
-    public Motion Then(Func<Motion, Motion> configure, string? id = null, int? target = null)
+    public Motion Then(Func<Motion, Motion> configure, string? id = null, int? target = null, int offset = 0)
     {
         ArgumentNullException.ThrowIfNull(configure);
-        return Then(configure(None), id, target);
+        return Then(configure(None), id, target, offset);
     }
 
     /// <summary>
@@ -915,11 +918,11 @@ public sealed class Motion
     /// Empty timeline. <paramref name="duration"/> and <paramref name="easing"/> apply to
     /// each beat that did not set its own. <paramref name="delay"/> waits before the
     /// whole timeline. <see cref="Add(Motion, uint, string?, int?)"/> and
-    /// <see cref="Then(Motion, string?, int?)"/> place the beats.
+    /// <see cref="Then(Motion, string?, int?, int)"/> place the beats.
     /// </summary>
     /// <remarks>
     /// <paramref name="duration"/> is not the finished length. The timeline grows as beats are added.
-    /// The first <see cref="Then(Motion, string?, int?)"/> still starts at 0.
+    /// The first <see cref="Then(Motion, string?, int?, int)"/> still starts at 0.
     /// A beat that calls <see cref="WithDuration"/> or <see cref="WithEasing"/> keeps that value.
     /// A beat's own <see cref="WithDelay"/> stays a gap before that beat.
     /// <paramref name="repeat"/>, <paramref name="yoyo"/>, <paramref name="rate"/>,
@@ -979,7 +982,7 @@ public sealed class Motion
     /// <summary>
     /// First beat of a timeline. <paramref name="configure"/> receives an empty motion.
     /// Pass <paramref name="id"/> to name that beat for <see cref="MotionPlayer.Seek(string)"/>.
-    /// Further beats are <see cref="Then(Func{Motion, Motion}, string?, int?)"/> and
+    /// Further beats are <see cref="Then(Func{Motion, Motion}, string?, int?, int)"/> and
     /// <see cref="Add(Func{Motion, Motion}, uint, string?, int?)"/>.
     /// <see cref="WithDuration"/> then gives one length to every beat that did not set its own.
     /// <see cref="WithEasing"/> does the same for the curve.
@@ -1482,7 +1485,7 @@ public sealed class Motion
     static IReadOnlyList<NamedSpan> PutSpan(IReadOnlyList<NamedSpan> spans, NamedSpan next)
         => CompactSpans(ConcatSpans(spans, [next]));
 
-    Motion Add(Motion child, uint at, string? id, bool followsEnd, int? target = null)
+    Motion Add(Motion child, uint at, string? id, bool followsEnd, int? target = null, int offset = 0)
     {
         ArgumentNullException.ThrowIfNull(child);
         if (target is < 0)
@@ -1502,7 +1505,9 @@ public sealed class Motion
             rootSpans = WithSpanBeat(rootSpans, 0, force: false);
         }
 
-        var childStart = at + child.Delay;
+        var placedOffset = followsEnd ? offset : 0;
+        var origin = followsEnd ? (long)at + placedOffset : at;
+        var childStart = ClampUInt(origin + child.Delay);
         var childSpan = child._durationSet || _beatDuration is not uint beatLength ? child.Duration : beatLength;
         var newSpan = Math.Max(Duration, childStart + childSpan);
         var existing = Duration == newSpan ? tracks : Rebase(tracks, Duration, newSpan);
@@ -1519,7 +1524,7 @@ public sealed class Motion
             for (var i = 0; i < beats.Count; i++)
                 grown[i] = beats[i];
             grown[beats.Count] = new TimelineBeat(
-                beatId, at, followsEnd, child.Delay, childSpan, child._durationSet, childStart);
+                beatId, at, followsEnd, child.Delay, childSpan, child._durationSet, childStart, placedOffset);
             beats = grown;
         }
 
@@ -1595,7 +1600,7 @@ public sealed class Motion
             var length = beat.LengthLocked ? beat.Length : milliseconds;
             if (length != beat.Length)
                 changed = true;
-            var origin = beat.FollowsEnd ? cursor : beat.At;
+            var origin = beat.FollowsEnd ? cursor + beat.Offset : beat.At;
             var start = origin + beat.Delay;
             var end = start + length;
             if (end > cursor)
