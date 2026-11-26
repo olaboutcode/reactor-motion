@@ -246,4 +246,25 @@ public static class VisualNodeExtensions
             node
         };
     }
+
+    /// <summary>
+    /// Drags the child on the finger axes in <paramref name="plane"/>.
+    /// On release each axis keeps its speed and rests where that speed dies,
+    /// inside the authored span. Reaching an end stops there. Damping on
+    /// <paramref name="spring"/> is the friction. Stiffness does not pull toward an end.
+    /// A canceled pan stays where the finger left. The pan recognizer sits on
+    /// the wrapper. The motions run on the child.
+    /// </summary>
+    public static VisualNode Coast(
+        this VisualNode node,
+        Spring spring,
+        Func<DragPlane, DragPlane> plane)
+    {
+        ArgumentNullException.ThrowIfNull(node);
+        ArgumentNullException.ThrowIfNull(plane);
+        return new DragElement(plane(new DragPlane()), spring, coast: true)
+        {
+            node
+        };
+    }
 }

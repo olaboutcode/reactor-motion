@@ -352,18 +352,196 @@ public sealed class MotionDragTests
     }
 
     [Fact]
+    public void A_coast_in_the_middle_rests_there()
+    {
+        var box = new BoxView();
+        var drag = OpenCoast(box, new Spring(400, 10, 1));
+        drag.Seek(0.3);
+
+        drag.Coast(4);
+        Assert.True(drag.X!.IsForward());
+        Settle(drag);
+
+        Assert.InRange(box.TranslationX, 50, 90);
+        Assert.Equal(box.TranslationX / 100d, drag.X.Progress, 3);
+        Assert.True(drag.X.IsPaused());
+        Assert.False(drag.X.IsCompleted());
+    }
+
+    [Fact]
+    public void A_fast_coast_stops_at_the_end()
+    {
+        var box = new BoxView();
+        var drag = OpenCoast(box, new Spring(400, 5, 1));
+        drag.Seek(0.8);
+
+        drag.Coast(4);
+        Settle(drag);
+
+        Assert.Equal(100, box.TranslationX, 3);
+        Assert.Equal(1, drag.X!.Progress, 3);
+        Assert.True(drag.X.IsPaused());
+        drag.Tick(16);
+        Assert.Equal(100, box.TranslationX, 3);
+    }
+
+    [Fact]
+    public void A_coast_toward_the_start_stops_at_the_start()
+    {
+        var box = new BoxView();
+        var drag = OpenCoast(box, new Spring(400, 5, 1));
+        drag.Seek(0.2);
+
+        drag.Coast(-4);
+        Assert.True(drag.X!.IsReverse());
+        Settle(drag);
+
+        Assert.Equal(0, box.TranslationX, 3);
+        Assert.Equal(0, drag.X.Progress, 3);
+        Assert.True(drag.X.IsPaused());
+        drag.Tick(16);
+        Assert.Equal(0, box.TranslationX, 3);
+    }
+
+    [Fact]
+    public void A_zero_or_non_finite_coast_stays_put()
+    {
+        var held = OpenCoast(new BoxView(), new Spring(400, 10, 1));
+        held.Seek(0.4);
+        held.Coast(0);
+        held.Tick(16);
+        Assert.Equal(40, held.X!.Progress * 100, 3);
+        Assert.True(held.X.IsPaused());
+
+        var nan = OpenCoast(new BoxView(), new Spring(400, 10, 1));
+        nan.Seek(0.4);
+        nan.Coast(double.NaN);
+        nan.Tick(16);
+        Assert.Equal(0.4, nan.X!.Progress, 3);
+
+        var infinite = OpenCoast(new BoxView(), new Spring(400, 10, 1));
+        infinite.Seek(0.4);
+        infinite.Coast(double.PositiveInfinity);
+        infinite.Tick(16);
+        Assert.Equal(0.4, infinite.X!.Progress, 3);
+    }
+
+    [Fact]
+    public void Reduce_motion_coast_stays_at_the_current_progress()
+    {
+        var box = new BoxView();
+        var drag = Motion.Drag(
+            box,
+            new Spring(400, 5, 1),
+            plane => plane.X(motion => motion
+                .TranslateX(0, 100)
+                .WithDuration(400)
+                .WithEasing(Easing.Linear)
+                .WithReduceMotion(true)),
+            manual: true);
+
+        drag.Seek(0.4);
+        drag.Coast(8);
+
+        Assert.Equal(40, box.TranslationX, 3);
+        Assert.Equal(0.4, drag.X!.Progress, 3);
+        Assert.True(drag.X.IsPaused());
+        drag.Tick(16);
+        Assert.Equal(40, box.TranslationX, 3);
+    }
+
+    [Fact]
+    public void Seek_after_a_coast_clamps_to_the_authored_span()
+    {
+        var box = new BoxView();
+        var drag = OpenCoast(box, new Spring(400, 5, 1));
+        drag.Seek(0.8);
+        drag.Coast(4);
+        Settle(drag);
+        Assert.Equal(1, drag.X!.Progress, 3);
+
+        drag.Seek(1.4);
+        Assert.Equal(100, box.TranslationX, 3);
+        Assert.Equal(1, drag.X.Progress, 3);
+
+        drag.Seek(0.25);
+        Assert.Equal(25, box.TranslationX, 3);
+        Assert.Equal(0.25, drag.X.Progress, 3);
+    }
+
+    [Fact]
+    public void Delay_repeat_and_yoyo_do_not_continue_a_coast()
+    {
+        var box = new BoxView();
+        var drag = Motion.Drag(
+            box,
+            new Spring(400, 10, 1),
+            plane => plane.X(motion => motion
+                .TranslateX(0, 100)
+                .WithDuration(400)
+                .WithEasing(Easing.Linear)
+                .WithDelay(5000)
+                .Repeat(4)
+                .Yoyo()),
+            manual: true);
+
+        drag.Seek(0.3);
+        drag.Coast(4);
+        drag.Tick(16);
+        Assert.True(box.TranslationX > 30);
+        Settle(drag);
+        var rest = box.TranslationX;
+        Assert.InRange(rest, 50, 90);
+        Assert.True(drag.X!.IsPaused());
+
+        drag.Tick(16);
+        drag.Tick(16);
+        Assert.Equal(rest, box.TranslationX, 3);
+    }
+
+    [Fact]
+    public void Two_axes_coast_to_their_own_rests()
+    {
+        var box = new BoxView();
+        var drag = Motion.Drag(
+            box,
+            new Spring(400, 5, 1),
+            plane => plane
+                .X(motion => motion.TranslateX(0, 180).WithDuration(400).WithEasing(Easing.Linear))
+                .Y(motion => motion.TranslateY(0, 120).WithDuration(400).WithEasing(Easing.Linear)),
+            manual: true);
+
+        drag.Seek(0.5, 0.5);
+        drag.Coast(velocityX: 4, velocityY: -4);
+        Settle(drag);
+
+        Assert.Equal(180, box.TranslationX, 3);
+        Assert.Equal(0, box.TranslationY, 3);
+        Assert.True(drag.X!.IsPaused());
+        Assert.True(drag.Y!.IsPaused());
+    }
+
+    [Fact]
     public void Release_after_dispose_throws()
     {
         var drag = Open(new BoxView());
         drag.Dispose();
 
         Assert.Throws<ObjectDisposedException>(() => drag.Release());
+        Assert.Throws<ObjectDisposedException>(() => drag.Coast());
     }
 
     static Drag Open(BoxView box)
         => Motion.Drag(
             box,
             Spring.Default,
+            plane => plane.X(motion => motion.TranslateX(0, 100).WithDuration(400).WithEasing(Easing.Linear)),
+            manual: true);
+
+    static Drag OpenCoast(BoxView box, Spring spring)
+        => Motion.Drag(
+            box,
+            spring,
             plane => plane.X(motion => motion.TranslateX(0, 100).WithDuration(400).WithEasing(Easing.Linear)),
             manual: true);
 

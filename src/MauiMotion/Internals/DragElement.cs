@@ -3,10 +3,11 @@ using MauiReactor;
 namespace Reactor.Motion.Internals;
 
 /// <summary>
-/// Wrapper behind <c>VisualNode.Drag</c>. The pan recognizer stays on this grid.
+/// Wrapper behind <c>VisualNode.Drag</c> and <c>VisualNode.Coast</c>.
+/// The pan recognizer stays on this grid.
 /// The motions run on the single child, so the child can translate while the hit target stays put.
 /// </summary>
-internal sealed class DragElement(DragPlane plane, Spring spring) : Component
+internal sealed class DragElement(DragPlane plane, Spring spring, bool coast = false) : Component
 {
     Microsoft.Maui.Controls.Grid? _host;
     Microsoft.Maui.Controls.PanGestureRecognizer? _pan;
@@ -80,12 +81,20 @@ internal sealed class DragElement(DragPlane plane, Spring spring) : Component
                 break;
             case GestureStatus.Completed:
                 // Completed often reports a zero total. The last Running sample is the pose.
-                _drag.Release(_velocityX, _velocityY);
+                FinishPan(_velocityX, _velocityY);
                 break;
             case GestureStatus.Canceled:
-                _drag.Release(0, 0);
+                FinishPan(0, 0);
                 break;
         }
+    }
+
+    void FinishPan(double velocityX, double velocityY)
+    {
+        if (coast)
+            _drag!.Coast(velocityX, velocityY);
+        else
+            _drag!.Release(velocityX, velocityY);
     }
 
     void BeginPan()

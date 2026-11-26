@@ -29,6 +29,7 @@ public sealed class MotionPlayer : IDisposable
     double _v;
     double _springElapsedMs;
     Spring? _gestureSpring;
+    bool _coast;
     bool _hasTimedTracks;
     bool _hasTrackSprings;
     double? _poseKick;
@@ -137,6 +138,7 @@ public sealed class MotionPlayer : IDisposable
     /// <summary>
     /// Eased 0–1. Increases on forward and decreases on reverse.
     /// A spring, including a drag settle, reports its position clamped to 0–1.
+    /// A coast stays inside 0–1 and stops when it reaches an end.
     /// </summary>
     public double Progress { get; private set; }
 
@@ -276,6 +278,7 @@ public sealed class MotionPlayer : IDisposable
         _elapsedMs = 0;
         _holdMs = 0;
         _gestureSpring = null;
+        _coast = false;
         _direction = 1;
         if (_captured)
         {
@@ -377,6 +380,7 @@ public sealed class MotionPlayer : IDisposable
         if (double.IsNaN(velocity) || double.IsInfinity(velocity))
             velocity = 0;
 
+        _coast = false;
         var forward = velocity > Flick || (velocity >= -Flick && progress >= 0.5);
         _autoRepeat = false;
         _holdMs = 0;
@@ -409,9 +413,83 @@ public sealed class MotionPlayer : IDisposable
         StartClock();
     }
 
+    /// <summary>
+    /// Decays from the current progress. <paramref name="velocity"/> is progress
+    /// units per second and the initial speed. Positive moves toward 1.
+    /// <paramref name="spring"/> supplies the friction through its damping.
+    /// Stiffness does not pull toward 0 or 1. The rest stays inside 0–1.
+    /// Reaching an end stops there.
+    /// NaN and infinities count as 0. Delay, repeat, and yoyo do not continue.
+    /// <see cref="Motion.WithReduceMotion"/> stops on this call, at the current progress.
+    /// </summary>
+    public void Coast(Spring spring, double velocity = 0)
+    {
+        ThrowIfDisposed();
+        var progress = Progress;
+        if (double.IsNaN(progress) || double.IsInfinity(progress))
+            progress = 0;
+        if (double.IsNaN(velocity) || double.IsInfinity(velocity))
+            velocity = 0;
+
+        _autoRepeat = false;
+        _holdMs = 0;
+        _coast = true;
+        _gestureSpring = spring;
+        _x = progress;
+        _v = velocity;
+        _direction = velocity < 0 ? -1 : 1;
+        _springElapsedMs = 0;
+        ParkTrackSprings();
+        if (!HasLivePending)
+            _pending = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        if (velocity == 0 || Motion.ReduceMotion == true)
+        {
+            RestCoast();
+            return;
+        }
+
+        SetStatus(_direction > 0 ? MotionPlaybackStatus.Forward : MotionPlaybackStatus.Reverse);
+        _runArgs = NewArgs();
+        Raise(Started);
+        foreach (var runtime in _runtimes)
+            runtime.WriteSpringProgress(_x);
+        ReportProgress();
+        StartClock();
+    }
+
+    void RestCoast()
+    {
+        _clock.Stop();
+        _v = 0;
+        _gestureSpring = null;
+        foreach (var runtime in _runtimes)
+            runtime.WriteSpringProgress(_x);
+        if (IsRunning)
+        {
+            _pausedWas = Status;
+            SetStatus(MotionPlaybackStatus.Paused);
+            ReportProgress();
+            Raise(Paused);
+        }
+        else
+        {
+            if (Status is MotionPlaybackStatus.Dismissed or MotionPlaybackStatus.Completed)
+            {
+                _pausedWas = MotionPlaybackStatus.Forward;
+                SetStatus(MotionPlaybackStatus.Paused);
+            }
+
+            ReportProgress();
+        }
+
+        CompletePending();
+    }
+
     void SeekLinear(double u)
     {
         u = double.IsNaN(u) || double.IsInfinity(u) ? 0 : Math.Clamp(u, 0, 1);
+        _coast = false;
         _gestureSpring = null;
         _autoRepeat = false;
         _clock.Stop();
@@ -550,6 +628,7 @@ public sealed class MotionPlayer : IDisposable
         }
 
         _gestureSpring = null;
+        _coast = false;
         _direction = running == MotionPlaybackStatus.Forward ? 1 : -1;
         if (recapture)
         {
@@ -811,6 +890,30 @@ public sealed class MotionPlayer : IDisposable
 
     void StepSpring(double deltaMs, Spring spring)
     {
+        if (_coast)
+        {
+            SpringStep.Decay(spring, deltaMs, ref _x, ref _v, ref _springElapsedMs, out var coastSettled);
+            var hitEdge = _x <= 0 || _x >= 1;
+            if (hitEdge)
+            {
+                _x = Math.Clamp(_x, 0, 1);
+                _v = 0;
+            }
+
+            if (coastSettled || hitEdge)
+            {
+                RestCoast();
+            }
+            else
+            {
+                foreach (var runtime in _runtimes)
+                    runtime.WriteSpringProgress(_x);
+                ReportProgress();
+            }
+
+            return;
+        }
+
         var target = _direction > 0 ? 1d : 0d;
         SpringStep.Integrate(spring, deltaMs, target, ref _x, ref _v, ref _springElapsedMs, out var settled);
         foreach (var runtime in _runtimes)
@@ -992,9 +1095,11 @@ public sealed class MotionPlayer : IDisposable
 
     void ReportProgress()
     {
-        var progress = DrivingSpring
-            ? PlaybackU
-            : Motion.Easing.Ease(LinearU);
+        var progress = _coast
+            ? _x
+            : DrivingSpring
+                ? PlaybackU
+                : Motion.Easing.Ease(LinearU);
         Progress = progress;
         if (_runArgs is not null)
         {

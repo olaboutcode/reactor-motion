@@ -106,6 +106,7 @@ public sealed class DragPlane
 /// <summary>
 /// A drag bound by <see cref="Motion.Drag(VisualElement, Spring, Func{DragPlane, DragPlane})"/>.
 /// Each axis has its own player. <see cref="Release"/> springs that axis to an end.
+/// <see cref="Coast"/> keeps the finger speed and rests where that speed dies.
 /// </summary>
 public sealed class Drag : IDisposable
 {
@@ -162,7 +163,21 @@ public sealed class Drag : IDisposable
         Y?.SpringToNearest(_spring, velocityY);
     }
 
-    /// <summary>Stops both players. A later <see cref="Release"/> throws.</summary>
+    /// <summary>
+    /// Decays each bound axis from its current progress.
+    /// Velocity is progress units per second. Positive moves toward 1.
+    /// The release spring's damping is the friction. Stiffness does not pull
+    /// toward an end. The rest stays inside 0–1, and reaching an end stops there.
+    /// Speed 0, including a canceled pan, stays put. NaN and infinities count as 0.
+    /// </summary>
+    public void Coast(double velocityX = 0, double velocityY = 0)
+    {
+        ThrowIfDisposed();
+        X?.Coast(_spring, velocityX);
+        Y?.Coast(_spring, velocityY);
+    }
+
+    /// <summary>Stops both players. A later <see cref="Release"/> or <see cref="Coast"/> throws.</summary>
     public void Dispose()
     {
         if (_disposed)
