@@ -36,6 +36,7 @@ In-page view motion for [MauiReactor](https://github.com/adospace/reactorui-maui
   - [BindMotion](#bindmotion)
   - [Enter and exit](#enter-and-exit)
   - [In view](#in-view)
+  - [Scroll scrub](#scroll-scrub)
   - [Collection](#collection)
   - [MotionPlayer](#motionplayer)
     - [Forward and reverse](#forward-and-reverse)
@@ -134,7 +135,7 @@ global using Reactor.Motion;
 | `Spring`, `Stagger`, `StaggerFrom`, `SlideFrom`, `ColorSpace`, `KeyframeBuilder<T>`, `Matrix4` | Recipe values. |
 | `MotionCurve` | `CubicBezier` easing. |
 | `MotionPreferences` | App-wide reduce-motion override. |
-| `VisualNodeExtensions` | `.BindMotion()`, `.EnterExit()`, `.InView()`, `.Drag()`. |
+| `VisualNodeExtensions` | `.BindMotion()`, `.EnterExit()`, `.InView()`, `.Scrub()`, `.Drag()`. |
 | `CollectionExtensions` | `.Collection()` on a keyed collection. |
 | `MotionPlayerExtensions` | Null-safe `Forward` and `Reverse` on `MotionPlayer?`. |
 
@@ -504,6 +505,36 @@ On load the from pose is written, so a fade sitting below the fold starts at its
 |---|---|
 | `VisualNode.InView(Motion motion)` | Plays `motion` once the child has scrolled halfway into view. |
 | `VisualNode.InView(Func<Motion, Motion> motion)` | Same. The function receives an empty motion. |
+
+### Scroll scrub
+
+`SeekFraction` parks a player and does not start the clock. `Scrub` feeds that seek from the nearest `ScrollView`. `InView` plays once when the child appears. `Scrub` keeps tracking the scroll. Put them on different views when a page wants both.
+
+```csharp
+Card()
+    .Scrub(m => m.Opacity(1, 0).TranslateY(0, -40));
+```
+
+0 is when the child's leading edge meets the far side of the viewport. 1 is when the trailing edge has left the near side. Values outside that crossing clamp. The axis is vertical when the content is taller than the viewport, or when both axes overflow. It is horizontal only when the content is wider and not taller. Each scroll seeks. `Repeat` and `Yoyo` do not advance, because the clock does not run.
+
+The child sits inside that `ScrollView`. A header that is a sibling of the scroller is outside this walk. With no `ScrollView` ancestor, the seek stays at 0. On load the from pose is written, until the first measurement supplies a progress.
+
+A pixel range maps a stretch of the scroll offset instead of the child's travel through the viewport. `from` and `to` are pixels.
+
+```csharp
+Header().Scrub(motion, from: 0, to: 120);
+```
+
+0 is `from` and 1 is `to`. Offsets outside that span clamp. When `to` is below `from`, the range runs backward. A zero span stays at 0 until the offset reaches `from`, then it is 1.
+
+`Scrub` calls `SeekFraction`, so the fraction is eased progress. Scroll fraction 0.5 writes the halfway property values. Reduce motion seeks to the end on the first read, including load, and then stops listening. The wrapper is a `Grid` and uses the same target walk as `BindMotion`.
+
+| Member | Role |
+|---|---|
+| `VisualNode.Scrub(Motion motion)` | Seeks `motion` as the child travels through the viewport. |
+| `VisualNode.Scrub(Func<Motion, Motion> motion)` | Same. The function receives an empty motion. |
+| `VisualNode.Scrub(Motion motion, double from, double to)` | Seeks from scroll offset `from` to `to`, in pixels. |
+| `VisualNode.Scrub(Func<Motion, Motion> motion, double from, double to)` | Same. The function receives an empty motion. |
 
 ### Collection
 
@@ -1116,7 +1147,7 @@ A posed replacement still receives the spring speed of the properties it takes. 
 
 ## Samples
 
-`samples/Sample` is a MauiReactor gallery. Home lists the playground, stagger, scrub, color spaces, timeline, path, matrix, enter / exit, in view, poses, drag, and collection. The playground includes slide out, scale out, width, and corner radius alongside the fades, springs, and keyframes. Stagger can start from the start, the center, or the end of the grid. Scrub seeks a fade and a cubic path. Color compares HSV, RGB, and three HSV stops. The timeline page plays a sequence with seek, an overlap, a beat name that changes when the beat starts, a box and an image on one timeline, a hold, a yoyo, a repeat, a beat that plays twice before the fade, a stagger, and a spring. Path plays a cubic Bézier, a tangent-following arc, a quadratic hop, a cornered polyline, a slice of the cubic, and the arc walked backward. Matrix plays a turn, a tilt, and a flip. Enter / exit shows a slide and a scale. In view fades and slides a card in once, after it scrolls halfway onto the page. On the poses page, Play springs two cards toward an outline. Halfway, Pose comes back from the live position and keeps the spring speed. Snap jumps onto the outline, then comes back. On the drag page, one card follows the finger along a lane and springs to the nearer end. Another moves across a board and springs to the nearest corner. A third stays in place and grows as you drag, then springs to small or large. All three keep the speed of the flick. On the collection page, adding, removing, or moving an item plays the move on the items that stay. A removed item fades where it left. The items sit in a vertical stack.
+`samples/Sample` is a MauiReactor gallery. Home lists the playground, stagger, scrub, color spaces, timeline, path, matrix, enter / exit, in view, poses, drag, and collection. The playground includes slide out, scale out, width, and corner radius alongside the fades, springs, and keyframes. Stagger can start from the start, the center, or the end of the grid. Scrub seeks a fade and a cubic path from sliders. Scrolling that page fades a card over the first 180px and tracks a second card as it crosses the viewport. Color compares HSV, RGB, and three HSV stops. The timeline page plays a sequence with seek, an overlap, a beat name that changes when the beat starts, a box and an image on one timeline, a hold, a yoyo, a repeat, a beat that plays twice before the fade, a stagger, and a spring. Path plays a cubic Bézier, a tangent-following arc, a quadratic hop, a cornered polyline, a slice of the cubic, and the arc walked backward. Matrix plays a turn, a tilt, and a flip. Enter / exit shows a slide and a scale. In view fades and slides a card in once, after it scrolls halfway onto the page. On the poses page, Play springs two cards toward an outline. Halfway, Pose comes back from the live position and keeps the spring speed. Snap jumps onto the outline, then comes back. On the drag page, one card follows the finger along a lane and springs to the nearer end. Another moves across a board and springs to the nearest corner. A third stays in place and grows as you drag, then springs to small or large. All three keep the speed of the flick. On the collection page, adding, removing, or moving an item plays the move on the items that stay. A removed item fades where it left. The items sit in a vertical stack.
 
 ## Building
 

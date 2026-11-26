@@ -32,6 +32,7 @@ sealed class MotionScrubPage : Component<MotionScrubPageState>
                     .GridRow(0),
                 ScrollView(
                     VStack(
+                        RangeCard(),
                         Label("Drag a slider. SeekFraction is eased progress.")
                             .FontSize(14)
                             .HCenter()
@@ -85,7 +86,8 @@ sealed class MotionScrubPage : Component<MotionScrubPageState>
                             Button("Reset", Reset)
                         )
                         .Spacing(8)
-                        .HCenter()
+                        .HCenter(),
+                        TravelCard()
                     )
                     .Spacing(16)
                     .Padding(24, 24, 24, 32)
@@ -184,6 +186,42 @@ sealed class MotionScrubPage : Component<MotionScrubPageState>
         _path.TranslationX = 0;
         _path.TranslationY = 0;
     }
+
+    static MauiReactor.VStack RangeCard()
+        => VStack(
+            Label("Scroll the page. This card fades over the first 180px.")
+                .FontSize(14)
+                .HCenter()
+                .HorizontalTextAlignment(TextAlignment.Center)
+                .TextColor(Colors.Gray),
+            BoxView()
+                .HeightRequest(72)
+                .HFill()
+                .CornerRadius(16)
+                .BackgroundColor(Colors.Teal)
+                .Scrub(m => m.Opacity(1, 0).TranslateY(0, -20), from: 0, to: 180)
+        )
+        .Spacing(8);
+
+    static MauiReactor.VStack TravelCard()
+        => VStack(
+            BoxView()
+                .HeightRequest(520)
+                .BackgroundColor(Colors.Transparent),
+            Label("This card tracks its trip through the viewport.")
+                .FontSize(14)
+                .HCenter()
+                .HorizontalTextAlignment(TextAlignment.Center)
+                .TextColor(Colors.Gray),
+            BoxView()
+                .HeightRequest(96)
+                .WidthRequest(96)
+                .CornerRadius(16)
+                .BackgroundColor(Colors.MediumPurple)
+                .HCenter()
+                .Scrub(m => m.Opacity(1, 0.2).TranslateY(0, -28))
+        )
+        .Spacing(8);
 
     static PathGeometry Curve()
     {

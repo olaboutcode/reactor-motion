@@ -95,6 +95,66 @@ public static class VisualNodeExtensions
     }
 
     /// <summary>
+    /// Seeks <paramref name="motion"/> from the nearest <c>ScrollView</c>.
+    /// 0 is when the child's leading edge meets the far side of the viewport.
+    /// 1 is when its trailing edge has left the near side. The axis is vertical
+    /// when the content is taller than the viewport, and horizontal when it is
+    /// only wider. The clock does not run. The child sits inside that
+    /// <c>ScrollView</c>. With no <c>ScrollView</c>, the seek stays at 0.
+    /// Reduce motion seeks to the end on the first read.
+    /// </summary>
+    public static VisualNode Scrub(this VisualNode node, Motion motion)
+    {
+        ArgumentNullException.ThrowIfNull(node);
+        ArgumentNullException.ThrowIfNull(motion);
+        return Scrub(node, motion, range: null);
+    }
+
+    /// <summary>
+    /// Same as <see cref="Scrub(VisualNode, Motion)"/>.
+    /// <paramref name="motion"/> receives an empty motion.
+    /// </summary>
+    public static VisualNode Scrub(this VisualNode node, Func<Motion, Motion> motion)
+    {
+        ArgumentNullException.ThrowIfNull(node);
+        ArgumentNullException.ThrowIfNull(motion);
+        return node.Scrub(motion(Motion.None));
+    }
+
+    /// <summary>
+    /// Seeks <paramref name="motion"/> from scroll offset <paramref name="from"/>
+    /// to <paramref name="to"/>, in pixels. 0 is <paramref name="from"/> and 1 is
+    /// <paramref name="to"/>. Offsets outside that span clamp. The axis is vertical
+    /// when the content is taller than the viewport, and horizontal when it is only
+    /// wider. The clock does not run. The child sits inside that <c>ScrollView</c>.
+    /// With no <c>ScrollView</c>, the seek stays at 0. Reduce motion seeks to the
+    /// end on the first read.
+    /// </summary>
+    public static VisualNode Scrub(this VisualNode node, Motion motion, double from, double to)
+    {
+        ArgumentNullException.ThrowIfNull(node);
+        ArgumentNullException.ThrowIfNull(motion);
+        return Scrub(node, motion, (from, to));
+    }
+
+    /// <summary>
+    /// Same as <see cref="Scrub(VisualNode, Motion, double, double)"/>.
+    /// <paramref name="motion"/> receives an empty motion.
+    /// </summary>
+    public static VisualNode Scrub(this VisualNode node, Func<Motion, Motion> motion, double from, double to)
+    {
+        ArgumentNullException.ThrowIfNull(node);
+        ArgumentNullException.ThrowIfNull(motion);
+        return node.Scrub(motion(Motion.None), from, to);
+    }
+
+    static ScrubElement Scrub(VisualNode node, Motion motion, (double From, double To)? range)
+        => new ScrubElement(motion, range?.From, range?.To)
+        {
+            node
+        };
+
+    /// <summary>
     /// Drags the child on the finger axes in <paramref name="plane"/>.
     /// On release each axis springs to its nearer end with <paramref name="spring"/>
     /// and keeps that axis's speed. The pan recognizer sits on the wrapper.

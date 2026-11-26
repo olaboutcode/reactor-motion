@@ -51,7 +51,7 @@ Warnings fail the library and the test project. The sample is still expected to 
 
 One player owns each property it writes. A later player takes only the properties in its recipe. A path owns both translations, and rotation when `orient` is set. A matrix owns translation, rotation, and scale. Taking one of those releases the whole path or transform.
 
-`EnterExit` plays when the parent keeps rendering the node and passes `present`. Removing the node unmounts it immediately. An exit with `Repeat(-1)` never finishes, so the child never leaves. `InView` plays once when the child has scrolled halfway into the nearest `ScrollView`. A child with no `ScrollView` plays on load. Scrolling away and back does not replay.
+`EnterExit` plays when the parent keeps rendering the node and passes `present`. Removing the node unmounts it immediately. An exit with `Repeat(-1)` never finishes, so the child never leaves. `InView` plays once when the child has scrolled halfway into the nearest `ScrollView`. A child with no `ScrollView` plays on load. Scrolling away and back does not replay. `Scrub` seeks `SeekFraction` from that same scroll and does not play. The child sits inside the `ScrollView`. Omit `from` and `to` to track the child's trip through the viewport. Pass pixel offsets to map a scroll span. Reduce motion seeks to the end on the first read.
 
 `Collection` moves an item that stays and changes place. `FromPlace` starts that translation at the last position. A `CollectionView` recycles cells and does not host these nodes.
 
