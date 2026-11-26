@@ -37,12 +37,6 @@ sealed class MotionPathPage : Component
                 ScrollView(
                     VStack([
                         Caption("Each marker follows a geometry. A bar also turns to match the tangent."),
-                        HStack(
-                            Button("Play", Play),
-                            Button("Reset", ResetAll)
-                        )
-                        .Spacing(8)
-                        .HCenter(),
                         .. _lanes.Select(Stage),
                     ])
                     .Spacing(16)
@@ -73,9 +67,11 @@ sealed class MotionPathPage : Component
                     .VCenter()
                     .OnLoaded(() => Bind(lane))
             )
-            .HeightRequest(lane.Height)
+            .HeightRequest(lane.Height),
+            Button("Play", () => _ = Play(lane))
+                .HCenter()
         )
-        .Spacing(4);
+        .Spacing(8);
 
     static MauiReactor.Label Caption(string text)
         => Label(text)
@@ -98,22 +94,13 @@ sealed class MotionPathPage : Component
             lane.Marker);
     }
 
-    void Play()
+    static async Task Play(Lane lane)
     {
-        foreach (var lane in _lanes)
-        {
-            Park(lane.Marker);
-            lane.Player.Forward();
-        }
-    }
-
-    void ResetAll()
-    {
-        foreach (var lane in _lanes)
-        {
-            lane.Player?.Reset();
-            Park(lane.Marker);
-        }
+        if (lane.Player is null)
+            return;
+        Park(lane.Marker);
+        lane.Player.Reset();
+        await lane.Player.ForwardAsync();
     }
 
     static void Park(MauiControls.BoxView? marker)
