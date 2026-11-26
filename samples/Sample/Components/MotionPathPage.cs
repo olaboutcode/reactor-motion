@@ -37,7 +37,7 @@ sealed class MotionPathPage : Component
                 ScrollView(
                     VStack([
                         Caption("Each marker follows a geometry. A bar also turns to match the tangent."),
-                        .. _lanes.Select(Stage),
+                        .. Examples(),
                     ])
                     .Spacing(16)
                     .Padding(24, 24, 24, 32)
@@ -48,7 +48,24 @@ sealed class MotionPathPage : Component
         )
         .HideNavigationBar();
 
-    VisualNode Stage(Lane lane)
+    IEnumerable<VisualNode> Examples()
+    {
+        for (var i = 0; i < _lanes.Length; i++)
+        {
+            if (i > 0)
+                yield return Rule();
+            yield return Stage(_lanes[i]);
+        }
+    }
+
+    static MauiReactor.BoxView Rule()
+        => BoxView()
+            .HeightRequest(1)
+            .HFill()
+            .Margin(0, 8, 0, 8)
+            .BackgroundColor(Colors.Gray.WithAlpha(0.35f));
+
+    static MauiReactor.VStack Stage(Lane lane)
         => VStack(
             Label(lane.Title)
                 .FontSize(16)
