@@ -66,6 +66,35 @@ public static class VisualNodeExtensions
     }
 
     /// <summary>
+    /// Plays <paramref name="motion"/> once, when the child has scrolled about
+    /// halfway into the nearest <c>ScrollView</c>. A child already that far in
+    /// view on load plays immediately. A child with no <c>ScrollView</c> ancestor
+    /// plays on load. Scrolling away and back does not replay. The from pose is
+    /// written on load, so a fade below the fold starts at its from value.
+    /// Reduce motion finishes when playback starts.
+    /// </summary>
+    public static VisualNode InView(this VisualNode node, Motion motion)
+    {
+        ArgumentNullException.ThrowIfNull(node);
+        ArgumentNullException.ThrowIfNull(motion);
+        return new InViewElement(motion)
+        {
+            node
+        };
+    }
+
+    /// <summary>
+    /// Same as <see cref="InView(VisualNode, Motion)"/>.
+    /// <paramref name="motion"/> receives an empty motion.
+    /// </summary>
+    public static VisualNode InView(this VisualNode node, Func<Motion, Motion> motion)
+    {
+        ArgumentNullException.ThrowIfNull(node);
+        ArgumentNullException.ThrowIfNull(motion);
+        return node.InView(motion(Motion.None));
+    }
+
+    /// <summary>
     /// Drags the child on the finger axes in <paramref name="plane"/>.
     /// On release each axis springs to its nearer end with <paramref name="spring"/>
     /// and keeps that axis's speed. The pan recognizer sits on the wrapper.
