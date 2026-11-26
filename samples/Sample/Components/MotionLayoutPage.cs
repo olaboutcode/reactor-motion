@@ -1,20 +1,24 @@
 namespace Sample.Components;
 
 /// <summary>
-/// Opening a session inserts notes whose height is not known ahead of time.
-/// Each view under those notes springs from the origin the last layout pass recorded.
+/// Opening a session inserts notes. Views under those notes spring from the last layout origin.
+/// Closing plays a height exit, so the session shrinks closed.
 /// </summary>
 sealed class MotionLayoutPageState
 {
-    public bool DesignOpen { get; set; }
+    public bool Design { get; set; }
 
-    public bool BuildOpen { get; set; }
+    public bool Build { get; set; }
 
-    public bool ShipOpen { get; set; }
+    public bool Ship { get; set; }
 }
 
 sealed class MotionLayoutPage : Component<MotionLayoutPageState>
 {
+    const double ShortNotes = 88;
+
+    const double LongNotes = 120;
+
     public override VisualNode Render()
         => ContentPage(
             Grid("auto,*", "*",
@@ -23,7 +27,7 @@ sealed class MotionLayoutPage : Component<MotionLayoutPageState>
                     .GridRow(0),
                 ScrollView(
                     VStack(
-                        Caption("Tap a session to open its notes, and tap it again to close them. Everything under the notes springs from where it was. The recipe does not name the distance."),
+                        Caption("Tap a session to open its notes. Everything under them springs from where it was. Tap it again and the notes shrink closed."),
                         Schedule()
                     )
                     .Spacing(16)
@@ -50,24 +54,27 @@ sealed class MotionLayoutPage : Component<MotionLayoutPageState>
                     "Design review",
                     "Walk the empty states, then the path from the list to the detail.",
                     Colors.OrangeRed,
-                    State.DesignOpen,
-                    () => SetState(state => state.DesignOpen = !state.DesignOpen)),
+                    ShortNotes,
+                    State.Design,
+                    () => SetState(state => state.Design = !state.Design)),
                 Session(
                     "build",
                     "11:30",
                     "Implementation",
                     "Keep the notes in the day. The next session moves by their height, and that height is measured when layout runs.",
                     Colors.Teal,
-                    State.BuildOpen,
-                    () => SetState(state => state.BuildOpen = !state.BuildOpen)),
+                    LongNotes,
+                    State.Build,
+                    () => SetState(state => state.Build = !state.Build)),
                 Session(
                     "ship",
                     "15:00",
                     "Release",
                     "Ship the build, then write down what the day actually changed.",
                     Colors.MediumPurple,
-                    State.ShipOpen,
-                    () => SetState(state => state.ShipOpen = !state.ShipOpen)),
+                    ShortNotes,
+                    State.Ship,
+                    () => SetState(state => state.Ship = !state.Ship)),
                 Close()
             )
             .Spacing(10);
@@ -78,6 +85,7 @@ sealed class MotionLayoutPage : Component<MotionLayoutPageState>
         string title,
         string notes,
         Color color,
+        double notesHeight,
         bool open,
         Action toggle)
         => Border(
@@ -96,9 +104,9 @@ sealed class MotionLayoutPage : Component<MotionLayoutPageState>
                             .VCenter()
                             .GridColumn(1)
                     ),
-                    Notes(notes, open)
+                    Notes(open, notes, notesHeight)
                 )
-                .Spacing(10)
+                .Spacing(0)
             )
             .Padding(16)
             .BackgroundColor(color)
@@ -108,7 +116,7 @@ sealed class MotionLayoutPage : Component<MotionLayoutPageState>
             .Layout(motion => motion.FromPlace().WithSpring(Spring.Gentle))
             .WithKey(key);
 
-    static MauiReactor.Border Notes(string notes, bool open)
+    static VisualNode Notes(bool open, string notes, double height)
         => Border(
                 Label(notes)
                     .FontSize(14)
@@ -118,7 +126,16 @@ sealed class MotionLayoutPage : Component<MotionLayoutPageState>
             .BackgroundColor(Colors.White.WithAlpha(0.16f))
             .Stroke(Colors.Transparent)
             .StrokeCornerRadius(12)
-            .IsVisible(open);
+            .HeightRequest(height)
+            .EnterExit(
+                open,
+                enter: motion => motion.Height(height, height).WithDuration(1),
+                exit: motion => motion
+                    .Height(height, 0)
+                    .ScaleY(1, 0)
+                    .AnchorY(0, 0)
+                    .WithDuration(280)
+                    .WithEasing(Easing.CubicOut));
 
     static VisualNode Close()
         => Label("End of Thursday. This line moves by the height of every note that opened.")
