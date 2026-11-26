@@ -45,6 +45,7 @@ In-page view motion for [MauiReactor](https://github.com/adospace/reactorui-maui
     - [Player events](#player-events)
   - [Seek](#seek)
   - [Drag](#drag)
+  - [Press](#press)
   - [Repeat and yoyo](#repeat-and-yoyo)
   - [Parallel merge](#parallel-merge)
   - [Delay](#delay)
@@ -135,7 +136,7 @@ global using Reactor.Motion;
 | `Spring`, `Stagger`, `StaggerFrom`, `SlideFrom`, `ColorSpace`, `KeyframeBuilder<T>`, `Matrix4` | Recipe values. |
 | `MotionCurve` | `CubicBezier` easing. |
 | `MotionPreferences` | App-wide reduce-motion override. |
-| `VisualNodeExtensions` | `.BindMotion()`, `.EnterExit()`, `.InView()`, `.Scrub()`, `.Drag()`. |
+| `VisualNodeExtensions` | `.BindMotion()`, `.EnterExit()`, `.InView()`, `.Scrub()`, `.Press()`, `.Drag()`. |
 | `CollectionExtensions` | `.Collection()` on a keyed collection. |
 | `MotionPlayerExtensions` | Null-safe `Forward` and `Reverse` on `MotionPlayer?`. |
 
@@ -793,6 +794,33 @@ card.Drag(drop, plane => plane
 
 Lifting the finger releases with the sampled speed of each axis. A canceled pan releases both with speed 0, so the card still settles. Grabbing again seeks the current progress and the settle stops under the finger. Another property on the same view keeps its own player. A non-finite travel, or one smaller than a millionth of a pixel, counts as 1.
 
+### Press
+
+`Press` springs a view while the pointer is down, then springs it back. The recognizer sits on the wrapper. The motion runs on the child.
+
+```csharp
+Card()
+    .Press(m => m.Scale(1, 0.96).WithSpring(Spring.Snappy));
+```
+
+The pointer down plays that recipe forward. The pointer up reverses it, the same way an interrupted exit reverses. A second press during the reverse continues that run from the live value. The recipe is posed, so a forward that starts fresh reads the live value instead of jumping to the authored from. Reduce motion finishes the run.
+
+Hover is a second recipe. It plays on pointer enter and reverses on pointer exit. Pass nothing and there is no hover. A finger on a phone does not enter or exit, so that hover stays quiet. Press still runs from touch down and up. A mouse, a trackpad, and a stylus hover do raise those events.
+
+```csharp
+Card().Press(
+    pressed: m => m.Scale(1, 0.96).WithSpring(Spring.Snappy),
+    hover: m => m.Scale(1, 1.03).WithSpring(Spring.Gentle));
+```
+
+Press owns the properties it writes. A hover player that was writing those properties is released. Releasing while the pointer is still inside reverses the press, which returns to the value captured when the press began. Leaving after that plays toward the hover recipe's authored from. Leaving during the press does the same when hover has already shown. A press that never saw a hover reverses on the way out.
+
+| Member | Role |
+|---|---|
+| `VisualNode.Press(Motion pressed)` | Plays `pressed` forward on pointer down and reverses it on pointer up. |
+| `VisualNode.Press(Func<Motion, Motion> pressed, Func<Motion, Motion>? hover = null)` | Same. Each function receives an empty motion. `hover` plays on pointer enter and reverses on pointer exit. |
+| `VisualNode.Press(Motion pressed, Motion? hover)` | Same, with a hover recipe. Null skips hover. |
+
 ### Repeat and yoyo
 
 ```csharp
@@ -1147,7 +1175,7 @@ A posed replacement still receives the spring speed of the properties it takes. 
 
 ## Samples
 
-`samples/Sample` is a MauiReactor gallery. Home lists the playground, stagger, scrub, color spaces, timeline, path, matrix, enter / exit, in view, poses, drag, and collection. The playground includes slide out, scale out, width, and corner radius alongside the fades, springs, and keyframes. Stagger can start from the start, the center, or the end of the grid. Scrub seeks a fade and a cubic path from sliders. Scrolling that page fades a card over the first 180px and tracks a second card as it crosses the viewport. Color compares HSV, RGB, and three HSV stops. The timeline page plays a sequence with seek, an overlap, a beat name that changes when the beat starts, a box and an image on one timeline, a hold, a yoyo, a repeat, a beat that plays twice before the fade, a stagger, and a spring. Path plays a cubic Bézier, a tangent-following arc, a quadratic hop, a cornered polyline, a slice of the cubic, and the arc walked backward. Matrix plays a turn, a tilt, and a flip. Enter / exit shows a slide and a scale. In view fades and slides a card in once, after it scrolls halfway onto the page. On the poses page, Play springs two cards toward an outline. Halfway, Pose comes back from the live position and keeps the spring speed. Snap jumps onto the outline, then comes back. On the drag page, one card follows the finger along a lane and springs to the nearer end. Another moves across a board and springs to the nearest corner. A third stays in place and grows as you drag, then springs to small or large. All three keep the speed of the flick. On the collection page, adding, removing, or moving an item plays the move on the items that stay. A removed item fades where it left. The items sit in a vertical stack.
+`samples/Sample` is a MauiReactor gallery. Home lists the playground, stagger, scrub, color spaces, timeline, path, matrix, enter / exit, in view, poses, press, drag, and collection. The playground includes slide out, scale out, width, and corner radius alongside the fades, springs, and keyframes. Stagger can start from the start, the center, or the end of the grid. Scrub seeks a fade and a cubic path from sliders. Scrolling that page fades a card over the first 180px and tracks a second card as it crosses the viewport. Color compares HSV, RGB, and three HSV stops. The timeline page plays a sequence with seek, an overlap, a beat name that changes when the beat starts, a box and an image on one timeline, a hold, a yoyo, a repeat, a beat that plays twice before the fade, a stagger, and a spring. Path plays a cubic Bézier, a tangent-following arc, a quadratic hop, a cornered polyline, a slice of the cubic, and the arc walked backward. Matrix plays a turn, a tilt, and a flip. Enter / exit shows a slide and a scale. In view fades and slides a card in once, after it scrolls halfway onto the page. On the poses page, Play springs two cards toward an outline. Halfway, Pose comes back from the live position and keeps the spring speed. Snap jumps onto the outline, then comes back. On the press page, one card springs smaller while the pointer is down. Another grows under a mouse or trackpad. A finger on a phone only presses that card. On the drag page, one card follows the finger along a lane and springs to the nearer end. Another moves across a board and springs to the nearest corner. A third stays in place and grows as you drag, then springs to small or large. All three keep the speed of the flick. On the collection page, adding, removing, or moving an item plays the move on the items that stay. A removed item fades where it left. The items sit in a vertical stack.
 
 ## Building
 

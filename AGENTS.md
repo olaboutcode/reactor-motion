@@ -57,6 +57,8 @@ One player owns each property it writes. A later player takes only the propertie
 
 `Drag` follows the finger on the axes in the plane and, on release, springs each axis to the nearer end. The nearer end is progress `0.5`. The release already receives the finger speed. A fast flick does not yet choose the far end. That is issue #9.
 
+`Press` plays its recipe forward while the pointer is down and reverses on release. A second press during that reverse continues from the live value. The recipe is posed, so a new forward reads the live value. Optional hover plays on pointer enter and reverses on pointer exit. A finger on a phone does not send those events, so hover stays quiet there. The recognizer sits on the wrapper and the motion runs on the child. Press takes the properties it writes. Leaving after that take plays toward the hover recipe's authored from.
+
 `Repeat` and `Yoyo` on `Timeline(...)`, and on the opening `Timeline(configure)` call, belong to the whole timeline. The same calls inside `Add` or `Then` belong to that beat. The beat's window includes every cycle, and the next `Then` starts after them. `Repeat(-1)` on a beat loops that beat, so later beats wait.
 
 `Add` places a beat at an absolute time from the timeline start. `Then` offset is milliseconds from the previous beat's end. A positive offset waits. A negative offset overlaps. The start clamps at 0.

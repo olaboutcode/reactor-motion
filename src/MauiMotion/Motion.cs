@@ -299,6 +299,26 @@ public sealed class Motion
         => Copy(pose: true);
 
     /// <summary>
+    /// A posed copy. Property tracks with an authored from-value end on that value,
+    /// and their from is read from the view. Press uses this to return to rest
+    /// after the hover player has been replaced.
+    /// </summary>
+    internal Motion RestPose()
+    {
+        var tracks = new MotionTrack[_tracks.Count];
+        for (var i = 0; i < _tracks.Count; i++)
+            tracks[i] = RestTrack(_tracks[i]);
+        return Copy(tracks: tracks, pose: true);
+    }
+
+    static MotionTrack RestTrack(MotionTrack track)
+    {
+        if (track.From is not object from || track.Keyframes is not null || track.Semantic != SemanticTrack.None)
+            return track;
+        return track with { From = null, To = from };
+    }
+
+    /// <summary>
     /// On a collection move, translation starts at the item's last position and
     /// ends at its new one. Tracks already on this recipe play as well.
     /// </summary>

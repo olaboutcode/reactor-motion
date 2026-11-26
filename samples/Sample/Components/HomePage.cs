@@ -19,7 +19,7 @@ sealed class HomePage : Component
                     Label("Reactor.Motion")
                         .FontSize(22)
                         .TextColor(ink),
-                    Label("Playground, stagger, scrub, color, timeline, path, matrix, enter / exit, in view, poses, drag, and collection.")
+                    Label("Playground, stagger, scrub, color, timeline, path, matrix, enter / exit, in view, poses, press, drag, and collection.")
                         .FontSize(16)
                         .TextColor(Muted)
                         .Margin(0, 8, 0, 0),
@@ -48,6 +48,7 @@ sealed class HomePage : Component
         Row("Enter / exit", () => PageNavigation.Push<MotionPresencePage>(), ink),
         Row("In view", () => PageNavigation.Push<MotionInViewPage>(), ink),
         Row("Poses", () => PageNavigation.Push<MotionPosePage>(), ink),
+        Row("Press", () => PageNavigation.Push<MotionPressPage>(), ink),
         Row("Drag", () => PageNavigation.Push<MotionDragPage>(), ink),
         Row("Collection", () => PageNavigation.Push<MotionCollectionPage>(), ink),
     ];

@@ -509,6 +509,9 @@ public sealed class MotionPlayer : IDisposable
             runtime.AdoptPoseKick(handoff);
     }
 
+    /// <summary>True after <see cref="Dispose"/>.</summary>
+    internal bool Disposed => _disposed;
+
     /// <summary>
     /// Stops the clock, cancels the pending task, and unregisters this player from its views.
     /// </summary>

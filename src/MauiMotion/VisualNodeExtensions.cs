@@ -155,6 +155,51 @@ public static class VisualNodeExtensions
         };
 
     /// <summary>
+    /// Plays <paramref name="pressed"/> forward while the pointer is down and
+    /// reverses it on release. A second press during that reverse continues from
+    /// the live value. The recognizer sits on the wrapper and the motion runs on
+    /// the child. Reduce motion finishes the run.
+    /// </summary>
+    public static VisualNode Press(this VisualNode node, Motion pressed)
+        => node.Press(pressed, hover: null);
+
+    /// <summary>
+    /// Same as <see cref="Press(VisualNode, Motion, Motion?)"/>.
+    /// <paramref name="pressed"/> receives an empty motion.
+    /// <paramref name="hover"/> plays on pointer enter and reverses on pointer exit.
+    /// Pass null when there is no hover. A finger on a phone does not raise those events, so hover stays quiet.
+    /// </summary>
+    public static VisualNode Press(
+        this VisualNode node,
+        Func<Motion, Motion> pressed,
+        Func<Motion, Motion>? hover = null)
+    {
+        ArgumentNullException.ThrowIfNull(node);
+        ArgumentNullException.ThrowIfNull(pressed);
+        return node.Press(pressed(Motion.None), hover?.Invoke(Motion.None));
+    }
+
+    /// <summary>
+    /// Plays <paramref name="pressed"/> forward while the pointer is down and
+    /// reverses it on release. The recipe is posed, so a new forward reads the
+    /// live value. A second press during the reverse continues that same run.
+    /// <paramref name="hover"/> plays on pointer enter and reverses on pointer exit.
+    /// Pass null when there is no hover. A finger on a phone does not raise those events, so hover stays quiet.
+    /// Leaving after a press that took the hover
+    /// properties plays toward the hover recipe's authored from. The recognizer sits
+    /// on the wrapper and the motions run on the child. Reduce motion finishes the run.
+    /// </summary>
+    public static VisualNode Press(this VisualNode node, Motion pressed, Motion? hover)
+    {
+        ArgumentNullException.ThrowIfNull(node);
+        ArgumentNullException.ThrowIfNull(pressed);
+        return new PressElement(pressed, hover)
+        {
+            node
+        };
+    }
+
+    /// <summary>
     /// Drags the child on the finger axes in <paramref name="plane"/>.
     /// On release each axis springs to its nearer end with <paramref name="spring"/>
     /// and keeps that axis's speed. The pan recognizer sits on the wrapper.
