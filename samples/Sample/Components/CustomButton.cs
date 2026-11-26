@@ -60,7 +60,7 @@ public partial class CustomButton : Component<CustomButtonState>
         .ButtonShadow(new MauiReactor.Shadow()
             .Brush(Brush.Black)
             .Offset(0.3, 0.3)
-            .Radius(4)
+            .Radius(3)
             .Opacity(0.28f)
         );
 }
