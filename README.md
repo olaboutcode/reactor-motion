@@ -37,6 +37,7 @@ In-page view motion for [MauiReactor](https://github.com/adospace/reactorui-maui
   - [Enter and exit](#enter-and-exit)
   - [In view](#in-view)
   - [Scroll scrub](#scroll-scrub)
+  - [Layout](#layout)
   - [Collection](#collection)
   - [MotionPlayer](#motionplayer)
     - [Forward and reverse](#forward-and-reverse)
@@ -136,7 +137,7 @@ global using Reactor.Motion;
 | `Spring`, `Stagger`, `StaggerFrom`, `SlideFrom`, `ColorSpace`, `KeyframeBuilder<T>`, `Matrix4` | Recipe values. |
 | `MotionCurve` | `CubicBezier` easing. |
 | `MotionPreferences` | App-wide reduce-motion override. |
-| `VisualNodeExtensions` | `.BindMotion()`, `.EnterExit()`, `.InView()`, `.Scrub()`, `.Press()`, `.Drag()`. |
+| `VisualNodeExtensions` | `.BindMotion()`, `.EnterExit()`, `.InView()`, `.Scrub()`, `.Press()`, `.Layout()`, `.Drag()`. |
 | `CollectionExtensions` | `.Collection()` on a keyed collection. |
 | `MotionPlayerExtensions` | Null-safe `Forward` and `Reverse` on `MotionPlayer?`. |
 
@@ -536,6 +537,24 @@ Header().Scrub(motion, from: 0, to: 120);
 | `VisualNode.Scrub(Func<Motion, Motion> motion)` | Same. The function receives an empty motion. |
 | `VisualNode.Scrub(Motion motion, double from, double to)` | Seeks from scroll offset `from` to `to`, in pixels. |
 | `VisualNode.Scrub(Func<Motion, Motion> motion, double from, double to)` | Same. The function receives an empty motion. |
+
+### Layout
+
+`Collection` slides an item that stays and changes place. `Layout` is that slide for one view that is not in a collection. A card whose slot changes from one pass to the next springs from the position it left. A sibling that grows does the same: the view below slides by the new height, and the recipe does not name that distance.
+
+```csharp
+Card()
+    .Layout(m => m.FromPlace().WithSpring(Spring.Gentle));
+```
+
+The first layout records the origin and does not play. A later position change plays the recipe. `FromPlace` starts translation at the last origin and ends at the new one, on each axis that moved. Width and height stay with the layout pass. Animating them fights the next measure. A shift under half a device-independent pixel stays put.
+
+The translation is on the wrapper grid. `Drag` writes translation too, so leave it off this child. Other tracks on the recipe play with the slide. Reduce motion finishes when the play starts.
+
+| Member | Role |
+|---|---|
+| `VisualNode.Layout(Motion motion)` | Plays `motion` when the view's layout position changes. |
+| `VisualNode.Layout(Func<Motion, Motion> motion)` | Same. The function receives an empty motion. |
 
 ### Collection
 
@@ -1175,7 +1194,7 @@ A posed replacement still receives the spring speed of the properties it takes. 
 
 ## Samples
 
-`samples/Sample` is a MauiReactor gallery. Home lists the playground, stagger, scrub, color spaces, timeline, path, matrix, enter / exit, in view, poses, press, drag, and collection. The playground includes slide out, scale out, width, and corner radius alongside the fades, springs, and keyframes. Stagger can start from the start, the center, or the end of the grid. Scrub seeks a fade and a cubic path from sliders. Scrolling that page fades a card over the first 180px and tracks a second card as it crosses the viewport. Color compares HSV, RGB, and three HSV stops. The timeline page plays a sequence with seek, an overlap, a beat name that changes when the beat starts, a box and an image on one timeline, a hold, a yoyo, a repeat, a beat that plays twice before the fade, a stagger, and a spring. Path plays a cubic Bézier, a tangent-following arc, a quadratic hop, a cornered polyline, a slice of the cubic, and the arc walked backward. Matrix plays a turn, a tilt, and a flip. Enter / exit shows a slide and a scale. In view fades and slides a card in once, after it scrolls halfway onto the page. On the poses page, Play springs two cards toward an outline. Halfway, Pose comes back from the live position and keeps the spring speed. Snap jumps onto the outline, then comes back. On the press page, one card springs smaller while the pointer is down. Another grows under a mouse or trackpad. A finger on a phone only presses that card. On the drag page, one card follows the finger along a lane and springs to the nearer end. Another moves across a board and springs to the nearest corner. A third stays in place and grows as you drag, then springs to small or large. All three keep the speed of the flick. On the collection page, adding, removing, or moving an item plays the move on the items that stay. A removed item fades where it left. The items sit in a vertical stack.
+`samples/Sample` is a MauiReactor gallery. Home lists the playground, stagger, scrub, color spaces, timeline, path, matrix, enter / exit, in view, poses, press, drag, layout, and collection. The playground includes slide out, scale out, width, and corner radius alongside the fades, springs, and keyframes. Stagger can start from the start, the center, or the end of the grid. Scrub seeks a fade and a cubic path from sliders. Scrolling that page fades a card over the first 180px and tracks a second card as it crosses the viewport. Color compares HSV, RGB, and three HSV stops. The timeline page plays a sequence with seek, an overlap, a beat name that changes when the beat starts, a box and an image on one timeline, a hold, a yoyo, a repeat, a beat that plays twice before the fade, a stagger, and a spring. Path plays a cubic Bézier, a tangent-following arc, a quadratic hop, a cornered polyline, a slice of the cubic, and the arc walked backward. Matrix plays a turn, a tilt, and a flip. Enter / exit shows a slide and a scale. In view fades and slides a card in once, after it scrolls halfway onto the page. On the poses page, Play springs two cards toward an outline. Halfway, Pose comes back from the live position and keeps the spring speed. Snap jumps onto the outline, then comes back. On the press page, one card springs smaller while the pointer is down. Another grows under a mouse or trackpad. A finger on a phone only presses that card. On the drag page, one card follows the finger along a lane and springs to the nearer end. Another moves across a board and springs to the nearest corner. A third stays in place and grows as you drag, then springs to small or large. All three keep the speed of the flick. On the layout page, opening a session reveals its notes, and everything under those notes springs from where it was. On the collection page, adding, removing, or moving an item plays the move on the items that stay. A removed item fades where it left. The items sit in a vertical stack.
 
 ## Building
 

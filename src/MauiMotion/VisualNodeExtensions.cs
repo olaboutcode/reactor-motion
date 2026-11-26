@@ -200,6 +200,34 @@ public static class VisualNodeExtensions
     }
 
     /// <summary>
+    /// Slides <paramref name="motion"/> from the last layout origin when this
+    /// view's position changes. The first layout records the origin and does not
+    /// play. <c>FromPlace</c> adds that slide. Width and height stay with the
+    /// layout pass. The translation is on the wrapper. Keep <c>Drag</c> off this
+    /// child. A collection item keeps its own move.
+    /// </summary>
+    public static VisualNode Layout(this VisualNode node, Motion motion)
+    {
+        ArgumentNullException.ThrowIfNull(node);
+        ArgumentNullException.ThrowIfNull(motion);
+        return new LayoutElement(motion)
+        {
+            node
+        };
+    }
+
+    /// <summary>
+    /// Same as <see cref="Layout(VisualNode, Motion)"/>.
+    /// <paramref name="motion"/> receives an empty motion.
+    /// </summary>
+    public static VisualNode Layout(this VisualNode node, Func<Motion, Motion> motion)
+    {
+        ArgumentNullException.ThrowIfNull(node);
+        ArgumentNullException.ThrowIfNull(motion);
+        return node.Layout(motion(Motion.None));
+    }
+
+    /// <summary>
     /// Drags the child on the finger axes in <paramref name="plane"/>.
     /// On release each axis springs to its nearer end with <paramref name="spring"/>
     /// and keeps that axis's speed. The pan recognizer sits on the wrapper.
