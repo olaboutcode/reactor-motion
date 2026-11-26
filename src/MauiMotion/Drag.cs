@@ -105,7 +105,7 @@ public sealed class DragPlane
 
 /// <summary>
 /// A drag bound by <see cref="Motion.Drag(VisualElement, Spring, Func{DragPlane, DragPlane})"/>.
-/// Each axis has its own player. <see cref="Release"/> springs that axis to the nearer end.
+/// Each axis has its own player. <see cref="Release"/> springs that axis to an end.
 /// </summary>
 public sealed class Drag : IDisposable
 {
@@ -150,9 +150,10 @@ public sealed class Drag : IDisposable
     }
 
     /// <summary>
-    /// Springs each bound axis to its nearer end.
-    /// Progress at or above 0.5 targets 1. Velocity is progress units per second on that axis.
-    /// Positive moves toward 1.
+    /// Springs each bound axis to an end.
+    /// Progress at or above 0.5 targets 1, unless that axis is moving faster than
+    /// 2 progress units per second toward the other end. Velocity is progress
+    /// units per second. Positive moves toward 1. Speed 0, including a canceled pan, uses the nearer end.
     /// </summary>
     public void Release(double velocityX = 0, double velocityY = 0)
     {

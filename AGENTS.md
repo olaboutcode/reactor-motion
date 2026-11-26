@@ -55,7 +55,7 @@ One player owns each property it writes. A later player takes only the propertie
 
 `Collection` moves an item that stays and changes place. `FromPlace` starts that translation at the last position. A `CollectionView` recycles cells and does not host these nodes. `Layout` is that move for one view that is not in a collection. The first layout records the origin and does not play. A later position change plays. Width and height stay with the layout pass. `Layout` and `Drag` both write translation, so they do not share a child.
 
-`Drag` follows the finger on the axes in the plane and, on release, springs each axis to the nearer end. The nearer end is progress `0.5`. The release already receives the finger speed. A fast flick does not yet choose the far end. That is issue #9.
+`Drag` follows the finger on the axes in the plane and, on release, springs each axis to an end. The nearer end is progress `0.5`. A release faster than 2 progress per second, toward an end, targets that end. A slower release, and a canceled pan, use the nearer end. The release already receives the finger speed.
 
 `Press` plays its recipe forward while the pointer is down and reverses on release. A second press during that reverse continues from the live value. The recipe is posed, so a new forward reads the live value. Optional hover plays on pointer enter and reverses on pointer exit. A finger on a phone does not send those events, so hover stays quiet there. The recognizer sits on the wrapper and the motion runs on the child. Press takes the properties it writes. Leaving after that take plays toward the hover recipe's authored from.
 

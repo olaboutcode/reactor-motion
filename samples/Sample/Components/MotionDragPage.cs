@@ -1,7 +1,7 @@
 namespace Sample.Components;
 
 /// <summary>
-/// Drag along a lane, across a board onto a corner, or sideways to grow a card. Release keeps the drag speed.
+/// Drag along a lane, flick across the halfway mark, move onto a corner, or grow a card.
 /// </summary>
 sealed class MotionDragPage : Component
 {
@@ -27,6 +27,8 @@ sealed class MotionDragPage : Component
                     VStack(
                         Caption("Drag the card along the lane. Let go and it springs to the nearer end, still moving at your speed."),
                         Lane(),
+                        Caption("Stay left of the mark and flick right. The card settles on the far end. Let go slowly and it springs back."),
+                        Flick(),
                         Caption("Drag the card anywhere in the board. Let go and it springs to the nearest corner, still moving at your speed."),
                         Board(),
                         Caption("Drag the card sideways. Let go and it springs to small or large, still moving at your speed."),
@@ -67,6 +69,40 @@ sealed class MotionDragPage : Component
                     motion => motion.TranslateX(0, Travel).WithDuration(400).WithEasing(Easing.Linear)))
         )
         .HCenter();
+
+    static MauiReactor.Grid Flick()
+        => Grid("76", $"{LaneWidth}",
+            BoxView()
+                .HeightRequest(2)
+                .BackgroundColor(Colors.Gray.WithAlpha(0.35f))
+                .VCenter(),
+            EndMark(0),
+            EndMark(Travel),
+            BoxView()
+                .WidthRequest(2)
+                .HeightRequest(36)
+                .BackgroundColor(Colors.Gray.WithAlpha(0.7f))
+                .Margin((Travel + Card) / 2 - 1, 0, 0, 0)
+                .HStart()
+                .VCenter()
+                .InputTransparent(inputTransparent: true),
+            CardView(Colors.Coral)
+                .VCenter()
+                .Drag(ReleaseSpring, plane => plane.X(
+                    motion => motion.TranslateX(0, Travel).WithDuration(400).WithEasing(Easing.Linear)))
+        )
+        .HCenter();
+
+    static MauiReactor.BoxView EndMark(double x)
+        => BoxView()
+            .WidthRequest(Card)
+            .HeightRequest(Card)
+            .CornerRadius(12)
+            .BackgroundColor(Colors.Coral.WithAlpha(0.18f))
+            .Margin(x, 0, 0, 0)
+            .HStart()
+            .VCenter()
+            .InputTransparent(inputTransparent: true);
 
     static MauiReactor.Grid Board()
         => Grid(

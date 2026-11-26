@@ -356,10 +356,16 @@ public sealed class MotionPlayer : IDisposable
     }
 
     /// <summary>
-    /// Springs to the nearer end. Progress at or above 0.5 targets 1. Below 0.5
-    /// targets 0. <paramref name="velocity"/> is progress units per second and is
-    /// the spring's initial speed. Positive velocity moves toward 1. NaN and
-    /// infinities count as 0. Delay, repeat, and yoyo do not continue this settle.
+    /// Progress per second. A faster release, toward an end, targets that end.
+    /// </summary>
+    const double Flick = 2;
+
+    /// <summary>
+    /// Springs to an end. Progress at or above 0.5 targets 1, and below 0.5
+    /// targets 0, unless <paramref name="velocity"/> is a flick.
+    /// Faster than 2 progress units per second toward an end targets that end.
+    /// Positive velocity moves toward 1. The value is the spring's initial speed.
+    /// NaN and infinities count as 0. Delay, repeat, and yoyo do not continue this settle.
     /// <see cref="Motion.WithReduceMotion"/> finishes on this call.
     /// </summary>
     public void SpringToNearest(Spring spring, double velocity = 0)
@@ -371,7 +377,7 @@ public sealed class MotionPlayer : IDisposable
         if (double.IsNaN(velocity) || double.IsInfinity(velocity))
             velocity = 0;
 
-        var forward = progress >= 0.5;
+        var forward = velocity > Flick || (velocity >= -Flick && progress >= 0.5);
         _autoRepeat = false;
         _holdMs = 0;
         _gestureSpring = spring;

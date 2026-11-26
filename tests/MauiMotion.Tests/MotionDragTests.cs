@@ -79,7 +79,8 @@ public sealed class MotionDragTests
         var box = new BoxView();
         var drag = Open(box);
         drag.Seek(0.6);
-        drag.Release(-8);
+        drag.Release(-1.9);
+        Assert.True(drag.X!.IsForward());
 
         drag.Tick(16);
         Assert.True(box.TranslationX < 60, $"translation={box.TranslationX}");
@@ -88,6 +89,71 @@ public sealed class MotionDragTests
 
         Assert.Equal(100, box.TranslationX, 3);
         Assert.True(drag.X.IsCompleted());
+    }
+
+    [Fact]
+    public void A_fast_flick_from_near_the_start_settles_at_the_end()
+    {
+        var box = new BoxView();
+        var drag = Open(box);
+        drag.Seek(0.2);
+
+        drag.Release(3);
+        Assert.True(drag.X!.IsForward());
+        Settle(drag);
+
+        Assert.Equal(100, box.TranslationX, 3);
+        Assert.True(drag.X.IsCompleted());
+    }
+
+    [Fact]
+    public void A_fast_flick_from_near_the_end_settles_at_the_start()
+    {
+        var box = new BoxView();
+        var drag = Open(box);
+        drag.Seek(0.8);
+
+        drag.Release(-3);
+        Assert.True(drag.X!.IsReverse());
+        Settle(drag);
+
+        Assert.Equal(0, box.TranslationX, 3);
+        Assert.True(drag.X.IsDismissed());
+    }
+
+    [Fact]
+    public void A_release_at_the_flick_threshold_keeps_the_nearer_end()
+    {
+        var box = new BoxView();
+        var drag = Open(box);
+        drag.Seek(0.2);
+
+        drag.Release(2);
+        Assert.True(drag.X!.IsReverse());
+        Settle(drag);
+
+        Assert.Equal(0, box.TranslationX, 3);
+    }
+
+    [Fact]
+    public void Reduce_motion_flick_jumps_to_the_far_end()
+    {
+        var box = new BoxView();
+        var drag = Motion.Drag(
+            box,
+            Spring.Default,
+            plane => plane.X(motion => motion
+                .TranslateX(0, 100)
+                .WithDuration(400)
+                .WithEasing(Easing.Linear)
+                .WithReduceMotion(true)),
+            manual: true);
+
+        drag.Seek(0.2);
+        drag.Release(3);
+
+        Assert.Equal(100, box.TranslationX, 3);
+        Assert.True(drag.X!.IsCompleted());
     }
 
     [Fact]
@@ -173,14 +239,14 @@ public sealed class MotionDragTests
             manual: true);
 
         drag.Seek(0.3);
-        drag.Release(5);
+        drag.Release(1);
         Assert.Equal(0, box.TranslationX, 3);
         Assert.True(drag.X!.IsDismissed());
         drag.Tick(16);
         Assert.Equal(0, box.TranslationX, 3);
 
         drag.Seek(0.8);
-        drag.Release(-5);
+        drag.Release(-1);
         Assert.Equal(100, box.TranslationX, 3);
         Assert.True(drag.X.IsCompleted());
         drag.Tick(16);
@@ -239,7 +305,7 @@ public sealed class MotionDragTests
         var drag = Corners(box);
         drag.Seek(0.6, 0.4);
 
-        drag.Release(velocityX: -4, velocityY: 3);
+        drag.Release(velocityX: -1, velocityY: 1);
         Settle(drag);
 
         Assert.Equal(180, box.TranslationX, 3);

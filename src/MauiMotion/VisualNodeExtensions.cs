@@ -229,9 +229,10 @@ public static class VisualNodeExtensions
 
     /// <summary>
     /// Drags the child on the finger axes in <paramref name="plane"/>.
-    /// On release each axis springs to its nearer end with <paramref name="spring"/>
-    /// and keeps that axis's speed. The pan recognizer sits on the wrapper.
-    /// The motions run on the child.
+    /// On release each axis springs to an end with <paramref name="spring"/>
+    /// and keeps that axis's speed. A release faster than 2 progress units
+    /// per second toward an end targets that end. A slower release uses the nearer end.
+    /// The pan recognizer sits on the wrapper. The motions run on the child.
     /// </summary>
     public static VisualNode Drag(
         this VisualNode node,
