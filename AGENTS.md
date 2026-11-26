@@ -2,7 +2,7 @@
 
 In-page view motion for MauiReactor. The public package and namespace are `Reactor.Motion`. The class library project is `src/MauiMotion`. Recipes are built with `Motion`. There is no `Animate` type.
 
-`docs/PLAN.md` is the scope and publish plan. `README.md` is the public API. When a public behavior changes, update the README in the same change.
+`docs/PLAN.md` is the scope and publish plan. `README.md` is the public API. XML comments on public members are part of that API.
 
 ## Scope
 
@@ -71,6 +71,16 @@ A gallery page shows a behavior the library already has. Do not add a library AP
 
 Do not replace a platform gesture delegate. Setting `UIScrollView.PanGestureRecognizer.ShouldBegin` overwrites MAUI's delegate and crashes on iOS.
 
+## Docs
+
+Update every doc the change affects in the same change.
+
+- Public behavior: `README.md` and the XML comments on the public members.
+- Scope or publish rules: `docs/PLAN.md`.
+- Agent workflow or build rules: `AGENTS.md`.
+
+Leave a doc describing the behavior that the code now has. A sample-only change updates the README samples paragraph when that paragraph lists the page.
+
 ## New features
 
 A new feature follows this order. Wait for the user before each confirmation step.
@@ -78,7 +88,7 @@ A new feature follows this order. Wait for the user before each confirmation ste
 1. Open a GitHub issue that says what the feature does and how it fits the existing API.
 2. Create a branch for that issue.
 3. Switch to the branch.
-4. Do the work on that branch. Include tests and a README update when the public behavior changes.
+4. Do the work on that branch. Include tests and the doc updates from [Docs](#docs).
 5. On confirmation, commit with a message that says what changed and why.
 6. On confirmation, push the branch.
 7. On confirmation, fast-forward `main`, push `main`, comment on the issue, close it as completed, and delete the branch locally and on origin.
