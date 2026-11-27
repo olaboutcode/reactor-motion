@@ -7,13 +7,14 @@ namespace Reactor.Motion.Internals;
 /// <summary>
 /// Wrapper behind <c>VisualNode.InView</c>. Writes the from pose on load and
 /// plays forward once the child has crossed into the nearest scroll viewport.
+/// With replay, a later crossing seeks that from pose and plays forward again.
 /// </summary>
-internal sealed class InViewElement(MotionRecipe motion) : Component
+internal sealed class InViewElement(MotionRecipe motion, bool replay = false) : Component
 {
     VisualElement? _host;
     Microsoft.Maui.Controls.ScrollView? _scroll;
     MotionPlayer? _player;
-    bool _played;
+    InViewSession _session = new();
     bool _hooked;
 
     public override VisualNode Render()
@@ -24,7 +25,7 @@ internal sealed class InViewElement(MotionRecipe motion) : Component
     void Bind()
     {
         Unhook();
-        _played = false;
+        _session = new InViewSession();
         _player?.Dispose();
         _player = null;
 
@@ -37,7 +38,7 @@ internal sealed class InViewElement(MotionRecipe motion) : Component
         _scroll = InViewGate.Ancestor(_host);
         if (_scroll is null)
         {
-            Play();
+            _player.Forward();
             return;
         }
 
@@ -53,7 +54,7 @@ internal sealed class InViewElement(MotionRecipe motion) : Component
         Unhook();
         _player?.Dispose();
         _player = null;
-        _played = false;
+        _session = new InViewSession();
     }
 
     void OnScroll(object? sender, ScrolledEventArgs e)
@@ -64,19 +65,19 @@ internal sealed class InViewElement(MotionRecipe motion) : Component
 
     void Check()
     {
-        if (_played || _host is null || _scroll?.Content is not Element content)
+        if (_player is null || _host is null || _scroll?.Content is not Element content)
             return;
-        if (!InViewGate.Crosses(InViewGate.InContent(_host, content), InViewGate.Viewport(_scroll)))
-            return;
-        Play();
-    }
 
-    void Play()
-    {
-        if (_played || _player is null)
+        var step = _session.Advance(
+            InViewGate.Crosses(InViewGate.InContent(_host, content), InViewGate.Viewport(_scroll)),
+            replay);
+        if (step == InViewStep.None)
             return;
-        _played = true;
-        Unhook();
+
+        if (!replay)
+            Unhook();
+        if (step == InViewStep.Replay)
+            _player.Seek(0);
         _player.Forward();
     }
 

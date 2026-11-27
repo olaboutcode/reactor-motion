@@ -66,32 +66,38 @@ public static class VisualNodeExtensions
     }
 
     /// <summary>
-    /// Plays <paramref name="motion"/> once, when the child has scrolled about
-    /// halfway into the nearest <c>ScrollView</c>. A child already that far in
-    /// view on load plays immediately. A child with no <c>ScrollView</c> ancestor
-    /// plays on load. Scrolling away and back does not replay. The from pose is
-    /// written on load, so a fade below the fold starts at its from value.
-    /// Reduce motion finishes when playback starts.
+    /// Plays <paramref name="motion"/> when the child has scrolled about halfway
+    /// into the nearest <c>ScrollView</c>. A child already that far in view on
+    /// load plays immediately. A child with no <c>ScrollView</c> ancestor plays
+    /// on load, and still plays once when <paramref name="replay"/> is set.
+    /// The from pose is written on load, so a fade below the fold starts at its
+    /// from value. Pass <paramref name="replay"/> and the motion arms again once
+    /// the overlap falls back below that halfway mark. The pose stays where the
+    /// play left it. The next crossing seeks the from pose and plays forward.
+    /// It does not restart while the child stays past the mark, and it does not
+    /// reverse on the way out. Omit <paramref name="replay"/> and scrolling away
+    /// does not play again. Reduce motion finishes when that play starts,
+    /// including each later entry.
     /// </summary>
-    public static VisualNode InView(this VisualNode node, Motion motion)
+    public static VisualNode InView(this VisualNode node, Motion motion, bool replay = false)
     {
         ArgumentNullException.ThrowIfNull(node);
         ArgumentNullException.ThrowIfNull(motion);
-        return new InViewElement(motion)
+        return new InViewElement(motion, replay)
         {
             node
         };
     }
 
     /// <summary>
-    /// Same as <see cref="InView(VisualNode, Motion)"/>.
+    /// Same as <see cref="InView(VisualNode, Motion, bool)"/>.
     /// <paramref name="motion"/> receives an empty motion.
     /// </summary>
-    public static VisualNode InView(this VisualNode node, Func<Motion, Motion> motion)
+    public static VisualNode InView(this VisualNode node, Func<Motion, Motion> motion, bool replay = false)
     {
         ArgumentNullException.ThrowIfNull(node);
         ArgumentNullException.ThrowIfNull(motion);
-        return node.InView(motion(Motion.None));
+        return node.InView(motion(Motion.None), replay);
     }
 
     /// <summary>

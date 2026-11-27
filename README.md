@@ -497,20 +497,26 @@ An infinite `Repeat` on the exit never finishes, so the child never unmounts. Gi
 ```csharp
 Card()
     .InView(m => m.FadeIn().SlideIn(SlideFrom.Bottom, 24).WithDuration(420));
+
+Card().InView(
+    m => m.FadeIn().SlideIn(SlideFrom.Bottom, 24).WithDuration(420),
+    replay: true);
 ```
 
-The motion plays once. It starts when the overlap reaches half the child, or half the viewport when the child is larger than the viewport. A child already that far in view on load plays immediately. A child with no `ScrollView` ancestor plays on load. Scrolling away and back does not replay.
+It starts when the overlap reaches half the child, or half the viewport when the child is larger than the viewport. A child already that far in view on load plays immediately. A child with no `ScrollView` ancestor plays on load, and still plays once when `replay` is set.
 
-On load the from pose is written, so a fade sitting below the fold starts at its from value. Reduce motion finishes when that play starts, the same way `Forward` does. The wrapper is a `Grid` and uses the same target walk as `BindMotion`.
+Omit `replay` and scrolling away does not play again. `replay: true` arms when the overlap falls back below that halfway mark. The pose stays where the play left it. The next crossing seeks the from pose and plays forward. The motion does not restart while the child stays past the mark. Leaving the viewport does not reverse the motion. A different exit on the way out is a separate recipe.
+
+On load the from pose is written, so a fade sitting below the fold starts at its from value. Reduce motion finishes when that play starts, including each later entry. The wrapper is a `Grid` and uses the same target walk as `BindMotion`.
 
 | Member | Role |
 |---|---|
-| `VisualNode.InView(Motion motion)` | Plays `motion` once the child has scrolled halfway into view. |
-| `VisualNode.InView(Func<Motion, Motion> motion)` | Same. The function receives an empty motion. |
+| `VisualNode.InView(Motion motion, bool replay = false)` | Plays `motion` once the child has scrolled halfway into view. `replay` plays again on the next entry. |
+| `VisualNode.InView(Func<Motion, Motion> motion, bool replay = false)` | Same. The function receives an empty motion. |
 
 ### Scroll scrub
 
-`SeekFraction` parks a player and does not start the clock. `Scrub` feeds that seek from the nearest `ScrollView`. `InView` plays once when the child appears. `Scrub` keeps tracking the scroll. Put them on different views when a page wants both.
+`SeekFraction` parks a player and does not start the clock. `Scrub` feeds that seek from the nearest `ScrollView`. `InView` plays when the child appears, and again after it scrolls away when `replay` is set. `Scrub` keeps tracking the scroll. Put them on different views when a page wants both.
 
 ```csharp
 Card()
@@ -1210,7 +1216,7 @@ A posed replacement still receives the spring speed of the properties it takes. 
 
 ## Samples
 
-`samples/Sample` is a MauiReactor gallery. Home lists the playground, stagger, scrub, color spaces, timeline, path, matrix, enter / exit, in view, poses, press, drag, layout, and collection. The playground includes slide out, scale out, width, and corner radius alongside the fades, springs, and keyframes. Stagger can start from the start, the center, or the end of the grid. Scrub seeks a scale and a turn, and a cubic path, from sliders. Scrolling that page fades a card over the first 180px and tracks a second card as it crosses the viewport. Color compares HSV, RGB, and three HSV stops. The timeline page plays a sequence with seek, an overlap, a beat name that changes when the beat starts, a box and an image on one timeline, a hold, a yoyo, a repeat, a beat that plays twice before the fade, a stagger, and a spring. Path plays a cubic Bézier, a tangent-following arc, a quadratic hop, a cornered polyline, a slice of the cubic, and the arc walked backward. Matrix plays a turn, a tilt, and a flip. Enter / exit shows a slide and a scale. In view fades and slides a card in once, after it scrolls halfway onto the page. On the poses page, Play springs two cards toward an outline. Halfway, Pose comes back from the live position and keeps the spring speed. Snap jumps onto the outline, then comes back. On the press page, one card springs smaller while the pointer is down. Another grows under a mouse or trackpad. A finger on a phone only presses that card. On the drag page, a card snaps into the nearer of two pockets. Another stays left of a bar: a flick reaches the far pocket, and a slow release springs back. A third has three pockets: a flick from the left reaches the middle, and a slow release takes the nearest. A fourth glides to a stop inside an open field. A fifth snaps to a corner of a board. A sixth stays in place and grows, then settles small or large. Each one keeps the speed of the release. On the layout page, opening a session reveals its notes, and everything under those notes springs from where it was. Closing plays a height exit on the notes, so the session shrinks closed. On the collection page, adding, removing, or moving an item plays the move on the items that stay. A removed item fades where it left. The items sit in a vertical stack.
+`samples/Sample` is a MauiReactor gallery. Home lists the playground, stagger, scrub, color spaces, timeline, path, matrix, enter / exit, in view, poses, press, drag, layout, and collection. The playground includes slide out, scale out, width, and corner radius alongside the fades, springs, and keyframes. Stagger can start from the start, the center, or the end of the grid. Scrub seeks a scale and a turn, and a cubic path, from sliders. Scrolling that page fades a card over the first 180px and tracks a second card as it crosses the viewport. Color compares HSV, RGB, and three HSV stops. The timeline page plays a sequence with seek, an overlap, a beat name that changes when the beat starts, a box and an image on one timeline, a hold, a yoyo, a repeat, a beat that plays twice before the fade, a stagger, and a spring. Path plays a cubic Bézier, a tangent-following arc, a quadratic hop, a cornered polyline, a slice of the cubic, and the arc walked backward. Matrix plays a turn, a tilt, and a flip. Enter / exit shows a slide and a scale. In view fades and slides two cards in after they scroll halfway onto the page. The green card plays once. The coral card plays again each time it scrolls back in. On the poses page, Play springs two cards toward an outline. Halfway, Pose comes back from the live position and keeps the spring speed. Snap jumps onto the outline, then comes back. On the press page, one card springs smaller while the pointer is down. Another grows under a mouse or trackpad. A finger on a phone only presses that card. On the drag page, a card snaps into the nearer of two pockets. Another stays left of a bar: a flick reaches the far pocket, and a slow release springs back. A third has three pockets: a flick from the left reaches the middle, and a slow release takes the nearest. A fourth glides to a stop inside an open field. A fifth snaps to a corner of a board. A sixth stays in place and grows, then settles small or large. Each one keeps the speed of the release. On the layout page, opening a session reveals its notes, and everything under those notes springs from where it was. Closing plays a height exit on the notes, so the session shrinks closed. On the collection page, adding, removing, or moving an item plays the move on the items that stay. A removed item fades where it left. The items sit in a vertical stack.
 
 ## Building
 
