@@ -20,6 +20,12 @@ internal sealed class ScrubElement(MotionRecipe motion, double? from, double? to
             .OnLoaded(Bind)
             .OnUnloaded(Unbind);
 
+    protected override void OnWillUnmount()
+    {
+        Unbind();
+        base.OnWillUnmount();
+    }
+
     void Bind()
     {
         Unhook();
@@ -44,7 +50,7 @@ internal sealed class ScrubElement(MotionRecipe motion, double? from, double? to
         _scroll.SizeChanged += OnLayout;
         _host.SizeChanged += OnLayout;
         _hooked = true;
-        Check();
+        SafeCheck();
     }
 
     void Unbind()
@@ -55,10 +61,22 @@ internal sealed class ScrubElement(MotionRecipe motion, double? from, double? to
     }
 
     void OnScroll(object? sender, ScrolledEventArgs e)
-        => Check();
+        => SafeCheck();
 
     void OnLayout(object? sender, EventArgs e)
-        => Check();
+        => SafeCheck();
+
+    void SafeCheck()
+    {
+        try
+        {
+            Check();
+        }
+        catch (ObjectDisposedException)
+        {
+            Unbind();
+        }
+    }
 
     void Check()
     {

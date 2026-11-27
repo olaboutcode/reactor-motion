@@ -12,8 +12,15 @@ sealed class MotionScrubPage : Component<MotionScrubPageState>
 {
     MauiControls.BoxView? _box;
     MauiControls.BoxView? _path;
+    MauiControls.Label? _readout;
+    MauiControls.Label? _pathReadout;
     MotionPlayer? _player;
     MotionPlayer? _pathPlayer;
+    double _liveT;
+    double _livePath;
+    bool _dragT;
+    bool _dragPath;
+    bool _flushPosted;
 
     protected override void OnWillUnmount()
     {
@@ -33,7 +40,7 @@ sealed class MotionScrubPage : Component<MotionScrubPageState>
                 ScrollView(
                     VStack(
                         RangeCard(),
-                        Label("Drag a slider. SeekFraction is eased progress.")
+                        Label("Drag the slider. The box stays in view, scales, and turns.")
                             .FontSize(14)
                             .HCenter()
                             .TextColor(Colors.Gray),
@@ -42,14 +49,18 @@ sealed class MotionScrubPage : Component<MotionScrubPageState>
                             .WidthRequest(96)
                             .CornerRadius(16)
                             .BackgroundColor(Colors.OrangeRed)
+                            .Opacity(1)
                             .HCenter()
                             .OnLoaded(Bind),
                         Slider()
                             .Minimum(0)
                             .Maximum(1)
                             .Value(State.T)
+                            .OnDragStarted(BeginScrub)
+                            .OnDragCompleted(EndScrub)
                             .OnValueChanged(OnScrub),
-                        Label($"t = {State.T:0.00}")
+                        Label(l => _readout = l)
+                            .Text(Readout("t", State.T))
                             .HCenter()
                             .TextColor(Colors.Gray),
                         Label("Path")
@@ -61,32 +72,34 @@ sealed class MotionScrubPage : Component<MotionScrubPageState>
                             .TextColor(Colors.Gray),
                         Grid(
                             BoxView()
-                                .BackgroundColor(Colors.Transparent)
-                                .HeightRequest(180),
+                                .CornerRadius(16)
+                                .BackgroundColor(Colors.CornflowerBlue.WithAlpha(0.08f))
+                                .InputTransparent(inputTransparent: true),
                             BoxView(b => _path = b)
                                 .HeightRequest(28)
                                 .WidthRequest(28)
                                 .CornerRadius(14)
                                 .BackgroundColor(Colors.CornflowerBlue)
+                                .Margin(16, 0, 0, 0)
                                 .HStart()
                                 .VCenter()
                                 .OnLoaded(BindPath)
                         )
-                        .HeightRequest(180),
+                        .HeightRequest(220)
+                        .HFill(),
                         Slider()
                             .Minimum(0)
                             .Maximum(1)
                             .Value(State.PathT)
+                            .OnDragStarted(BeginPath)
+                            .OnDragCompleted(EndPath)
                             .OnValueChanged(OnScrubPath),
-                        Label($"path = {State.PathT:0.00}")
+                        Label(l => _pathReadout = l)
+                            .Text(Readout("path", State.PathT))
                             .HCenter()
                             .TextColor(Colors.Gray),
-                        HStack(
-                            Button("Play", () => _ = Play()),
-                            Button("Reset", Reset)
-                        )
-                        .Spacing(8)
-                        .HCenter(),
+                        Button("Reset", Reset)
+                            .HCenter(),
                         TravelCard()
                     )
                     .Spacing(16)
@@ -103,18 +116,15 @@ sealed class MotionScrubPage : Component<MotionScrubPageState>
         if (_box is null)
             return;
         _player?.Dispose();
-        _box.Opacity = 0;
-        _box.ScaleX = 0.8;
-        _box.ScaleY = 0.8;
-        _box.Rotation = 0;
+        _box.Opacity = 1;
         _player = Motion.Bind(
             Motion.Define(m => m
-                .Opacity(0, 1)
                 .Scale(0.8, 1)
                 .Rotate(0, 180)
                 .WithDuration(800)
                 .WithEasing(Easing.CubicOut)),
             _box);
+        _player.SeekFraction(State.T);
     }
 
     void BindPath()
@@ -122,60 +132,110 @@ sealed class MotionScrubPage : Component<MotionScrubPageState>
         if (_path is null)
             return;
         _pathPlayer?.Dispose();
-        ParkPath();
         _pathPlayer = Motion.Bind(
             Motion.Define(m => m
                 .Path(Curve())
                 .WithDuration(800)
                 .WithEasing(Easing.CubicOut)),
             _path);
+        _pathPlayer.SeekFraction(State.PathT);
     }
+
+    void BeginScrub() => _dragT = true;
 
     void OnScrub(double value)
     {
-        SetState(s => s.T = value);
-        _player?.SeekFraction(value);
+        _liveT = value;
+        Seek(_player, value);
+        if (!_dragT)
+            PostFlush();
     }
+
+    void EndScrub()
+    {
+        _dragT = false;
+        PostFlush();
+    }
+
+    void BeginPath() => _dragPath = true;
 
     void OnScrubPath(double value)
     {
-        SetState(s => s.PathT = value);
-        _pathPlayer?.SeekFraction(value);
+        _livePath = value;
+        Seek(_pathPlayer, value);
+        if (!_dragPath)
+            PostFlush();
     }
 
-    async Task Play()
+    void EndPath()
     {
-        var fade = _player?.ForwardAsync() ?? Task.CompletedTask;
-        var path = _pathPlayer?.ForwardAsync() ?? Task.CompletedTask;
-        await Task.WhenAll(fade, path);
-        if (_player?.IsCompleted() != true && _pathPlayer?.IsCompleted() != true)
+        _dragPath = false;
+        PostFlush();
+    }
+
+    // The slider callback is still inside UIKit. Rebuilding the page there
+    // disposes the native view before the callback returns.
+    void PostFlush()
+    {
+        if (_flushPosted)
             return;
+        _flushPosted = true;
+        var dispatcher = Application.Current?.Dispatcher;
+        if (dispatcher is null)
+        {
+            Flush();
+            return;
+        }
+
+        dispatcher.DispatchDelayed(TimeSpan.FromMilliseconds(1), Flush);
+    }
+
+    void Flush()
+    {
+        _flushPosted = false;
+        if (_dragT || _dragPath)
+            return;
+
+        var t = _liveT;
+        var path = _livePath;
         SetState(s =>
         {
-            if (_player?.IsCompleted() == true)
-                s.T = 1;
-            if (_pathPlayer?.IsCompleted() == true)
-                s.PathT = 1;
+            s.T = t;
+            s.PathT = path;
         });
+        Seek(_player, t);
+        Seek(_pathPlayer, path);
     }
+
+    static void Seek(MotionPlayer? player, double value)
+    {
+        if (player is null)
+            return;
+        try
+        {
+            player.SeekFraction(value);
+        }
+        catch (ObjectDisposedException)
+        {
+            // The native view or the player was released during the gesture.
+        }
+    }
+
+    static string Readout(string name, double value) => $"{name} = {value:0.00}";
 
     void Reset()
     {
+        _liveT = 0;
+        _livePath = 0;
         _player?.Reset();
         _pathPlayer?.Reset();
+        if (_box is not null)
+            _box.Opacity = 1;
         SetState(s =>
         {
             s.T = 0;
             s.PathT = 0;
         });
-        if (_box is not null)
-        {
-            _box.Opacity = 0;
-            _box.ScaleX = 0.8;
-            _box.ScaleY = 0.8;
-            _box.Rotation = 0;
-        }
-
         ParkPath();
     }
 
@@ -229,9 +289,9 @@ sealed class MotionScrubPage : Component<MotionScrubPageState>
         var figure = new PathFigure { StartPoint = new Point(0, 0) };
         figure.Segments.Add(new BezierSegment
         {
-            Point1 = new Point(60, -70),
-            Point2 = new Point(150, 70),
-            Point3 = new Point(230, 0),
+            Point1 = new Point(48, -52),
+            Point2 = new Point(120, 52),
+            Point3 = new Point(176, 0),
         });
         geometry.Figures.Add(figure);
         return geometry;
