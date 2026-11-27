@@ -1318,6 +1318,9 @@ public sealed class Motion
     Motion Add(BindableProperty property, object? from, object to)
         => Append(new MotionTrack(property, SemanticTrack.None, from, to, 0, 1, null, null));
 
+    internal Motion Track(BindableProperty property, double from, double to)
+        => Add(property, from, to);
+
     Motion AddSemantic(SemanticTrack semantic, object? from, object to)
         => Append(new MotionTrack(null, semantic, from, to, 0, 1, null, null));
 

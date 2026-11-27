@@ -27,6 +27,21 @@ internal static class FlipMotion
         return body.Tracks.Count == 0 ? null : body;
     }
 
+    /// <summary>
+    /// <see cref="Move"/> plus a 0–1 reveal track when <paramref name="reveal"/> is set.
+    /// The track carries the recipe timing when the move itself has nothing to play.
+    /// Null when there is nothing to run.
+    /// </summary>
+    public static Motion? Reveal(Motion recipe, double x, double y, bool reveal)
+    {
+        var body = Move(recipe, x, y);
+        if (!reveal)
+            return body;
+
+        var seed = (body ?? Motion.None).Track(LayoutMotionHost.RevealProperty, 0d, 1d);
+        return body is null ? Time(seed, recipe) : seed;
+    }
+
     public static Motion Time(Motion body, Motion timing)
     {
         var motion = timing.Spring is Spring spring

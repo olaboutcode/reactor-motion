@@ -1,5 +1,6 @@
 using System.ComponentModel;
 using MauiReactor;
+using Microsoft.Maui.Controls.Shapes;
 using Reactor.Motion;
 using MotionRecipe = Reactor.Motion.Motion;
 
@@ -19,6 +20,72 @@ public sealed class LayoutMotionHost : Microsoft.Maui.Controls.Grid
     public bool HasArranged { get; private set; }
 
     public event EventHandler? Arranged;
+
+    internal static readonly BindableProperty RevealProperty = BindableProperty.Create(
+        nameof(Reveal),
+        typeof(double),
+        typeof(LayoutMotionHost),
+        1d,
+        propertyChanged: (bindable, _, value) =>
+        {
+            if (bindable is LayoutMotionHost host && value is double next)
+                host.ApplyReveal(next);
+        });
+
+    double _fromWidth;
+    double _fromHeight;
+    double _toWidth;
+    double _toHeight;
+    bool _armed;
+    RectangleGeometry? _clip;
+
+    internal double Reveal
+    {
+        get => (double)GetValue(RevealProperty);
+        set => SetValue(RevealProperty, value);
+    }
+
+    internal void ArmReveal(double fromWidth, double fromHeight, double toWidth, double toHeight)
+    {
+        _fromWidth = fromWidth;
+        _fromHeight = fromHeight;
+        _toWidth = toWidth;
+        _toHeight = toHeight;
+        _armed = true;
+    }
+
+    internal void ClearReveal()
+    {
+        _armed = false;
+        _clip = null;
+        Clip = null;
+    }
+
+    void ApplyReveal(double progress)
+    {
+        if (!_armed)
+            return;
+        if (!double.IsFinite(progress) || progress >= 1)
+        {
+            ClearReveal();
+            return;
+        }
+
+        var span = Math.Clamp(progress, 0, 1);
+        var rect = new Rect(
+            0,
+            0,
+            Math.Max(0, _fromWidth + ((_toWidth - _fromWidth) * span)),
+            Math.Max(0, _fromHeight + ((_toHeight - _fromHeight) * span)));
+        if (_clip is null)
+        {
+            _clip = new RectangleGeometry { Rect = rect };
+            Clip = _clip;
+            return;
+        }
+
+        _clip.Rect = rect;
+    }
 
     protected override Size ArrangeOverride(Rect bounds)
     {
@@ -64,9 +131,9 @@ internal sealed class LayoutMotionState
 }
 
 /// <summary>
-/// Wrapper behind <c>VisualNode.Layout</c>. The first arrange records the origin.
-/// A later position change plays the recipe from that origin. The translation is
-/// on this grid, the same way a collection move translates its row.
+/// Wrapper behind <c>VisualNode.Layout</c>. The first arrange records the bounds.
+/// A later position change plays the recipe from that origin. A size change clips
+/// this grid from the old size to the new one. The translation stays on this grid.
 /// </summary>
 internal sealed class LayoutElement(MotionRecipe motion) : Component<LayoutMotionState>
 {
@@ -74,6 +141,7 @@ internal sealed class LayoutElement(MotionRecipe motion) : Component<LayoutMotio
     {
         State.Alive = false;
         Detach();
+        State.Host?.ClearReveal();
         State.Player?.Dispose();
         State.Player = null;
         base.OnWillUnmount();
@@ -131,7 +199,7 @@ internal sealed class LayoutElement(MotionRecipe motion) : Component<LayoutMotio
             State.Frame = next;
             State.Recorded = true;
             if (step.Play)
-                Play(host, step.X, step.Y);
+                Play(host, step);
         }
         finally
         {
@@ -139,11 +207,16 @@ internal sealed class LayoutElement(MotionRecipe motion) : Component<LayoutMotio
         }
     }
 
-    void Play(LayoutMotionHost host, double x, double y)
+    void Play(LayoutMotionHost host, LayoutStep step)
     {
-        var recipe = FlipMotion.Move(motion, x, y);
+        var recipe = FlipMotion.Reveal(motion, step.X, step.Y, step.Reveal);
         if (recipe is null)
             return;
+
+        if (step.Reveal)
+            host.ArmReveal(step.FromWidth, step.FromHeight, step.ToWidth, step.ToHeight);
+        else
+            host.ClearReveal();
 
         State.Player?.Dispose();
         State.Player = MotionPlayer.Create(recipe, [host]);

@@ -206,11 +206,15 @@ public static class VisualNodeExtensions
     }
 
     /// <summary>
-    /// Slides <paramref name="motion"/> from the last layout origin when this
-    /// view's position changes. The first layout records the origin and does not
-    /// play. <c>FromPlace</c> adds that slide. Width and height stay with the
-    /// layout pass. The translation is on the wrapper. Keep <c>Drag</c> off this
-    /// child. A collection item keeps its own move.
+    /// Plays <paramref name="motion"/> when this view's layout bounds change.
+    /// The first layout records the bounds and does not play. <c>FromPlace</c>
+    /// slides from the last origin. A width or height change of at least half a
+    /// device-independent pixel clips the wrapper from the old size to the new
+    /// one, on that same recipe. The layout pass has already set the new size.
+    /// This does not read that size back and does not write <c>HeightRequest</c>.
+    /// A shift under half a pixel stays put. Reduce motion shows the new size
+    /// when the change is recorded. The translation is on the wrapper. Keep
+    /// <c>Drag</c> off this child. A collection item keeps its own move.
     /// </summary>
     public static VisualNode Layout(this VisualNode node, Motion motion)
     {

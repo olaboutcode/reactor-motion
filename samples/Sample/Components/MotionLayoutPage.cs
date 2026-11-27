@@ -1,7 +1,7 @@
 namespace Sample.Components;
 
 /// <summary>
-/// Opening a session inserts notes. Views under those notes spring from the last layout origin.
+/// Opening a session reveals the new height and springs the views under those notes.
 /// Closing plays a height exit, so the session shrinks closed.
 /// </summary>
 sealed class MotionLayoutPageState
@@ -27,7 +27,7 @@ sealed class MotionLayoutPage : Component<MotionLayoutPageState>
                     .GridRow(0),
                 ScrollView(
                     VStack(
-                        Caption("Tap a session to open its notes. Everything under them springs from where it was. Tap it again and the notes shrink closed."),
+                        Caption("Tap a session to open its notes. The session reveals that new height, and everything under it springs from where it was. Tap it again and the notes shrink closed."),
                         Schedule()
                     )
                     .Spacing(16)
