@@ -46,6 +46,7 @@ In-page view motion for [MauiReactor](https://github.com/adospace/reactorui-maui
     - [Player events](#player-events)
   - [Seek](#seek)
   - [Drag](#drag)
+  - [Pinch](#pinch)
   - [Press](#press)
   - [Repeat and yoyo](#repeat-and-yoyo)
   - [Parallel merge](#parallel-merge)
@@ -137,7 +138,7 @@ global using Reactor.Motion;
 | `Spring`, `Stagger`, `StaggerFrom`, `SlideFrom`, `ColorSpace`, `KeyframeBuilder<T>`, `Matrix4` | Recipe values. |
 | `MotionCurve` | `CubicBezier` easing. |
 | `MotionPreferences` | App-wide reduce-motion override. |
-| `VisualNodeExtensions` | `.BindMotion()`, `.EnterExit()`, `.InView()`, `.Scrub()`, `.Press()`, `.Layout()`, `.Drag()`. |
+| `VisualNodeExtensions` | `.BindMotion()`, `.EnterExit()`, `.InView()`, `.Scrub()`, `.Press()`, `.Layout()`, `.Drag()`, `.Pinch()`. |
 | `CollectionExtensions` | `.Collection()` on a keyed collection. |
 | `MotionPlayerExtensions` | Null-safe `Forward` and `Reverse` on `MotionPlayer?`. |
 
@@ -837,6 +838,24 @@ The second call rests a sheet at peek, half, and full. A flick moves one stop. A
 
 Lifting the finger releases with the sampled speed of each axis. A canceled pan releases both with speed 0, so the card still settles. Grabbing again seeks the current progress and the settle stops under the finger. Another property on the same view keeps its own player. A non-finite travel, or one smaller than a millionth of a pixel, counts as 1.
 
+### Pinch
+
+`Pinch` seeks while two fingers move. The scale recipe follows the span. The rotate recipe follows the angle when you pass one. Omit rotate and the view does not turn. Progress 0 is the from pose and 1 is the to pose. Release leaves that progress. There is no snap. A canceled pinch returns to the progress where the gesture began. Reduce motion stays at the from pose.
+
+The finger ratio is the current span divided by the span at the start of the gesture. That ratio multiplies the scale at the start. The product is placed between the recipe's from and to. A wider span moves toward the larger scale. With `Scale(1, 2.5)` that larger scale is progress 1. The turn adds the finger angle, in degrees, to the rotation at the start. Positive is clockwise, the same direction as `Rotate`. Both results clamp to the recipe.
+
+```csharp
+Photo().Pinch(
+    scale: m => m.Scale(1, 2.5).WithDuration(400).WithEasing(Easing.Linear),
+    rotate: m => m.Rotate(-30, 30).WithDuration(400).WithEasing(Easing.Linear));
+```
+
+`Motion.Pinch` binds the same recipes and waits. It does not install a recognizer. `Seek(ratio, degrees)` parks the pose. `ratio` 1 keeps the scale. `degrees` 0 keeps the rotation. `Release` leaves the progress. `Cancel` restores the progress from the last `Begin`. `NaN` and infinities count as no change. A ratio at or below 0 counts as 1.
+
+The scale player owns the scale tracks. `Scale` writes `ScaleX` and `ScaleY`. The rotate player owns rotation when a rotate recipe is set. A later player that takes one of those releases that part of the pinch. A drag that only translates can sit on the same view. This does not add a pan, a release spring, or a pinch that scrolls a `ScrollView`.
+
+On a page, the wrapper fills its cell, the recognizer sits on the wrapper, and the motions run on the child. The card starts at the from pose.
+
 ### Press
 
 `Press` springs a view while the pointer is down, then springs it back. The recognizer sits on the wrapper. The motion runs on the child.
@@ -1208,7 +1227,7 @@ static PathGeometry Arc()
 
 Each property of a view has one live player. A fade and a slide on the same view run together. A second player that writes a property the first one writes takes that property. The first player keeps every property the new recipe does not write. When the first player has nothing left, it is disposed. The dispose happens after the new player is registered, and a debug build logs the steal.
 
-A path owns translation on both axes, and rotation when `orient` is set. A matrix transform owns translation, rotation, and scale. Taking any one of those releases the whole path or transform. Opacity, color, corner radius, and anchor keep their own player.
+A path owns translation on both axes, and rotation when `orient` is set. A matrix transform owns translation, rotation, and scale. Taking any one of those releases the whole path or transform. A pinch owns the scale tracks in its scale recipe, and rotation when a rotate recipe is set. Taking those releases that part of the pinch. Opacity, color, corner radius, and anchor keep their own player.
 
 A player that targets many views owns each view's properties on its own. A new player on one tile takes that tile's properties and leaves the other tiles on the first player.
 
@@ -1218,7 +1237,7 @@ A posed replacement still receives the spring speed of the properties it takes. 
 
 ## Samples
 
-`samples/Sample` is a MauiReactor gallery. Home lists the playground, stagger, scrub, color spaces, timeline, path, matrix, enter / exit, in view, poses, press, drag, layout, and collection. The playground includes slide out, scale out, width, and corner radius alongside the fades, springs, and keyframes. Stagger can start from the start, the center, or the end of the grid. Scrub seeks a scale and a turn, and a cubic path, from sliders. Scrolling that page fades a card over the first 180px and tracks a second card as it crosses the viewport. Color compares HSV, RGB, and three HSV stops. The timeline page plays a sequence with seek, an overlap, a beat name that changes when the beat starts, a box and an image on one timeline, a hold, a yoyo, a repeat, a beat that plays twice before the fade, a stagger, and a spring. Path plays a cubic Bézier, a tangent-following arc, a quadratic hop, a cornered polyline, a slice of the cubic, and the arc walked backward. Matrix plays a turn, a tilt, and a flip. Enter / exit shows a slide and a scale. In view fades and slides two cards in after they scroll halfway onto the page. Scroll marks fill the space above each card. The green card plays once. The coral card plays again each time it scrolls back in. On the poses page, Play springs two cards toward an outline. Halfway, Pose comes back from the live position and keeps the spring speed. Snap jumps onto the outline, then comes back. On the press page, one card springs smaller while the pointer is down. Another grows under a mouse or trackpad. A finger on a phone only presses that card. On the drag page, a card snaps into the nearer of two pockets. Another stays left of a bar: a flick reaches the far pocket, and a slow release springs back. A third has three pockets: a flick from the left reaches the middle, and a slow release takes the nearest. A fourth glides to a stop inside an open field. A fifth snaps to a corner of a board. A sixth stays in place and grows, then settles small or large. Each one keeps the speed of the release. On the layout page, opening a session reveals the new height from the old one, and everything under those notes springs from where it was. Closing plays a height exit on the notes, so the session shrinks closed. On the collection page, adding, removing, or moving an item plays the move on the items that stay. A removed item fades where it left. The items sit in a vertical stack.
+`samples/Sample` is a MauiReactor gallery. Home lists the playground, stagger, scrub, color spaces, timeline, path, matrix, enter / exit, in view, poses, press, drag, pinch, layout, and collection. The playground includes slide out, scale out, width, and corner radius alongside the fades, springs, and keyframes. Stagger can start from the start, the center, or the end of the grid. Scrub seeks a scale and a turn, and a cubic path, from sliders. Scrolling that page fades a card over the first 180px and tracks a second card as it crosses the viewport. Color compares HSV, RGB, and three HSV stops. The timeline page plays a sequence with seek, an overlap, a beat name that changes when the beat starts, a box and an image on one timeline, a hold, a yoyo, a repeat, a beat that plays twice before the fade, a stagger, and a spring. Path plays a cubic Bézier, a tangent-following arc, a quadratic hop, a cornered polyline, a slice of the cubic, and the arc walked backward. Matrix plays a turn, a tilt, and a flip. Enter / exit shows a slide and a scale. In view fades and slides two cards in after they scroll halfway onto the page. Scroll marks fill the space above each card. The green card plays once. The coral card plays again each time it scrolls back in. On the poses page, Play springs two cards toward an outline. Halfway, Pose comes back from the live position and keeps the spring speed. Snap jumps onto the outline, then comes back. On the press page, one card springs smaller while the pointer is down. Another grows under a mouse or trackpad. A finger on a phone only presses that card. On the drag page, a card snaps into the nearer of two pockets. Another stays left of a bar: a flick reaches the far pocket, and a slow release springs back. A third has three pockets: a flick from the left reaches the middle, and a slow release takes the nearest. A fourth glides to a stop inside an open field. A fifth snaps to a corner of a board. A sixth stays in place and grows, then settles small or large. Each one keeps the speed of the release. On the pinch page, two fingers grow a card and turn it, and letting go leaves that pose. On the layout page, opening a session reveals the new height from the old one, and everything under those notes springs from where it was. Closing plays a height exit on the notes, so the session shrinks closed. On the collection page, adding, removing, or moving an item plays the move on the items that stay. A removed item fades where it left. The items sit in a vertical stack.
 
 ## Building
 

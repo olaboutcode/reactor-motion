@@ -279,4 +279,38 @@ public static class VisualNodeExtensions
             node
         };
     }
+
+    /// <summary>
+    /// Pinches the child. <paramref name="scale"/> receives an empty motion.
+    /// The finger span multiplies the scale at the start of the gesture, and that
+    /// scale is placed on the recipe. A wider span moves toward the larger scale.
+    /// <paramref name="rotate"/>, when set, adds the finger angle. Positive is clockwise.
+    /// Omit it and the view does not turn. Release leaves the progress. A canceled
+    /// pinch returns to where the gesture began. There is no snap. Reduce motion
+    /// stays at the from pose. The recognizer sits on the wrapper. The motions run
+    /// on the child.
+    /// </summary>
+    public static VisualNode Pinch(
+        this VisualNode node,
+        Func<Motion, Motion> scale,
+        Func<Motion, Motion>? rotate = null)
+    {
+        ArgumentNullException.ThrowIfNull(node);
+        ArgumentNullException.ThrowIfNull(scale);
+        return node.Pinch(scale(Motion.None), rotate is null ? null : rotate(Motion.None));
+    }
+
+    /// <summary>
+    /// Same as <see cref="Pinch(VisualNode, Func{Motion, Motion}, Func{Motion, Motion}?)"/>.
+    /// <paramref name="rotate"/> may be null.
+    /// </summary>
+    public static VisualNode Pinch(this VisualNode node, Motion scale, Motion? rotate = null)
+    {
+        ArgumentNullException.ThrowIfNull(node);
+        ArgumentNullException.ThrowIfNull(scale);
+        return new PinchElement(scale, rotate)
+        {
+            node,
+        };
+    }
 }

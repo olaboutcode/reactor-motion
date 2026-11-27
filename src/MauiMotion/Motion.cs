@@ -1236,6 +1236,46 @@ public sealed class Motion
     }
 
     /// <summary>
+    /// Binds <paramref name="scale"/> to <paramref name="target"/> and waits.
+    /// <paramref name="rotate"/>, when set, follows the finger angle.
+    /// The pinch seeks while the fingers move and leaves that progress on release.
+    /// </summary>
+    public static Pinch Pinch(VisualElement target, Motion scale, Motion? rotate = null)
+    {
+        ArgumentNullException.ThrowIfNull(target);
+        ArgumentNullException.ThrowIfNull(scale);
+        return new Pinch(target, scale, rotate, manual: false);
+    }
+
+    /// <summary>
+    /// Builds the recipes from empty motions and binds them with <see cref="Pinch(VisualElement, Motion, Motion?)"/>.
+    /// <paramref name="rotate"/> may be null.
+    /// </summary>
+    public static Pinch Pinch(
+        VisualElement target,
+        Func<Motion, Motion> scale,
+        Func<Motion, Motion>? rotate = null)
+    {
+        ArgumentNullException.ThrowIfNull(scale);
+        return Pinch(target, scale(None), rotate is null ? null : rotate(None));
+    }
+
+    /// <summary>Same as <see cref="Pinch(VisualElement, Motion, Motion?)"/> with manual clocks for tests.</summary>
+    internal static Pinch Pinch(VisualElement target, Motion scale, Motion? rotate, bool manual)
+        => new(target, scale, rotate, manual);
+
+    /// <summary>Same as <see cref="Pinch(VisualElement, Func{Motion, Motion}, Func{Motion, Motion}?)"/> with manual clocks for tests.</summary>
+    internal static Pinch Pinch(
+        VisualElement target,
+        Func<Motion, Motion> scale,
+        Func<Motion, Motion>? rotate,
+        bool manual)
+    {
+        ArgumentNullException.ThrowIfNull(scale);
+        return new Pinch(target, scale(None), rotate is null ? null : rotate(None), manual);
+    }
+
+    /// <summary>
     /// Binds <paramref name="motion"/> to <paramref name="target"/> and plays it forward.
     /// A later bind that writes one of these properties replaces that part of this run. Cancellation does not throw.
     /// </summary>
