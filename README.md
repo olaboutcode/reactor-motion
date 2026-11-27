@@ -774,9 +774,9 @@ if (player.TrySpan("pulse", out var begin, out var end))
 
 ### Drag
 
-`Motion.Drag` binds one or two finger axes and waits, the same way `Motion.Bind` waits. `.X` follows the horizontal pan. `.Y` follows the vertical pan. Leave an axis out and that direction stays put. Each axis has its own player. On release that axis springs to an end and keeps its own speed. A fast flick aims at the end it moves toward. A slower release aims at the nearer end. The frame pump is the one `Play` already uses.
+`Motion.Drag` binds one or two finger axes and waits, the same way `Motion.Bind` waits. `.X` follows the horizontal pan. `.Y` follows the vertical pan. Leave an axis out and that direction stays put. Each axis has its own player. On release that axis springs to a stop and keeps its own speed. Omit the stops and they are 0 and 1. A fast flick aims at the next stop in that direction. A slower release aims at the nearest stop. The frame pump is the one `Play` already uses.
 
-The recipe is the from/to map. Give it a duration so a seek can stop between the ends. Pass the release spring to `Drag`. `WithSpring` on the recipe stays the playback spring and is still exclusive with duration.
+The recipe is the from/to map. Give it a duration so a seek can stop between the ends. Pass the release spring to `Drag`. `WithSpring` on the recipe stays the playback spring and is still exclusive with duration. Optional `stops` on an axis replace 0 and 1.
 
 A single `TranslateX` or `TranslateY` with a from and a to uses `to - from` as the finger travel. `TranslateX(180, 0)` drags toward the left. Pass `travel` when the finger span and the property span differ, or when the recipe is not one translation.
 
@@ -793,18 +793,18 @@ drag.Release(velocityX: 2, velocityY: -1);
 | Member | Role |
 |---|---|
 | `Motion.Drag(target, spring, plane)` | Binds the axes. Does not install a pan and does not start the spring. |
-| `DragPlane.X` / `Y` | Finger axis. The callback receives an empty motion. |
+| `DragPlane.X` / `Y` | Finger axis. The callback receives an empty motion. Optional `stops` replace 0 and 1. |
 | `Seek(double? x, double? y)` | Parks the axes you pass. Null leaves an axis alone. `NaN` seeks to 0. |
 | `Release(velocityX, velocityY)` | `SpringToNearest` on each bound axis. |
 | `Coast(velocityX, velocityY)` | Decays each bound axis inside 0–1. Damping is the friction. An end stops it. |
 | `X` / `Y` | The player for that finger axis, or null. |
 | `Dispose()` | Stops both players. A later `Release` or `Coast` throws. |
 
-`SpringToNearest` reads `Progress`, then aims at 1 when that value is at or above 0.5, and at 0 otherwise. Velocity is progress units per second on that axis. Positive velocity moves toward 1. A release faster than 2, toward an end, targets that end. A slower release keeps the nearer end. The first frames still move with that speed. `NaN` and infinities count as 0. Delay, repeat, and yoyo on the recipe do not continue the settle. `Seek` and finish still leave velocity at 0. The drag measures its own speed and passes it in. A canceled pan passes 0, so that release uses the nearer end.
+`SpringToNearest` reads `Progress` and the axis stops. Omit the stops and they are 0 and 1, so progress at or above 0.5 targets 1. With more stops, a release slower than 2 targets the nearest stop. The same distance picks the higher stop. A release faster than 2 toward a neighbor targets that neighbor. Positive velocity moves toward 1. The first frames still move with that speed. `NaN` and infinities count as 0. Stops outside 0–1 clamp. Duplicate stops collapse. Fewer than two distinct stops means 0 and 1. Delay, repeat, and yoyo on the recipe do not continue the settle. `Seek` and finish still leave velocity at 0. The drag measures its own speed and passes it in. A canceled pan passes 0, so that release uses the nearest stop.
 
-`WithReduceMotion(true)` on a recipe jumps that axis to its end on release. Releasing when progress is already 0 or 1 finishes that axis immediately.
+`WithReduceMotion(true)` jumps to the chosen stop. When the stops are only the ends, that is the end. Releasing when progress is already 0 or 1 finishes that axis immediately.
 
-`Coast` keeps the speed and rests where it dies, inside the authored span. Letting go in the middle of a lane can stop in the middle. A flick that reaches an end stops on that end. The card does not travel past the lane. The release spring's damping is the friction. Stiffness does not pull toward 0 or 1. `NaN` and infinities count as 0. Delay, repeat, and yoyo do not continue the coast. `Seek` still clamps to 0–1. `WithReduceMotion(true)` stops at the current progress. A canceled pan passes 0, so the card stays where the finger left it.
+`Coast` keeps the speed and rests where it dies, inside the authored span. Letting go in the middle of a lane can stop in the middle. A flick that reaches an end stops on that end. The card does not travel past the lane. Stops belong to `Release`. The release spring's damping is the friction. Stiffness does not pull toward 0 or 1. `NaN` and infinities count as 0. Delay, repeat, and yoyo do not continue the coast. `Seek` still clamps to 0–1. `WithReduceMotion(true)` stops at the current progress. A canceled pan passes 0, so the card stays where the finger left it.
 
 ```csharp
 card.Coast(drop, plane => plane
@@ -819,7 +819,13 @@ On a page, `Drag` installs the pan. The wrapper fills its cell, the recognizer s
 card.Drag(drop, plane => plane
     .X(m => m.TranslateX(0, 180).WithDuration(400).WithEasing(Easing.Linear))
     .Y(m => m.TranslateY(0, 120).WithDuration(400).WithEasing(Easing.Linear)));
+
+card.Drag(drop, plane => plane
+    .Y(m => m.TranslateY(0, 420).WithDuration(400).WithEasing(Easing.Linear),
+        stops: [0, 0.42, 1]));
 ```
+
+The second call rests a sheet at peek, half, and full. A flick moves one stop. A slow release takes the nearest.
 
 Lifting the finger releases with the sampled speed of each axis. A canceled pan releases both with speed 0, so the card still settles. Grabbing again seeks the current progress and the settle stops under the finger. Another property on the same view keeps its own player. A non-finite travel, or one smaller than a millionth of a pixel, counts as 1.
 
@@ -1204,7 +1210,7 @@ A posed replacement still receives the spring speed of the properties it takes. 
 
 ## Samples
 
-`samples/Sample` is a MauiReactor gallery. Home lists the playground, stagger, scrub, color spaces, timeline, path, matrix, enter / exit, in view, poses, press, drag, layout, and collection. The playground includes slide out, scale out, width, and corner radius alongside the fades, springs, and keyframes. Stagger can start from the start, the center, or the end of the grid. Scrub seeks a scale and a turn, and a cubic path, from sliders. Scrolling that page fades a card over the first 180px and tracks a second card as it crosses the viewport. Color compares HSV, RGB, and three HSV stops. The timeline page plays a sequence with seek, an overlap, a beat name that changes when the beat starts, a box and an image on one timeline, a hold, a yoyo, a repeat, a beat that plays twice before the fade, a stagger, and a spring. Path plays a cubic Bézier, a tangent-following arc, a quadratic hop, a cornered polyline, a slice of the cubic, and the arc walked backward. Matrix plays a turn, a tilt, and a flip. Enter / exit shows a slide and a scale. In view fades and slides a card in once, after it scrolls halfway onto the page. On the poses page, Play springs two cards toward an outline. Halfway, Pose comes back from the live position and keeps the spring speed. Snap jumps onto the outline, then comes back. On the press page, one card springs smaller while the pointer is down. Another grows under a mouse or trackpad. A finger on a phone only presses that card. On the drag page, a card snaps into the nearer of two pockets. Another stays left of a bar: a flick reaches the far pocket, and a slow release springs back. A third glides to a stop inside an open field. A fourth snaps to a corner of a board. A fifth stays in place and grows, then settles small or large. Each one keeps the speed of the release. On the layout page, opening a session reveals its notes, and everything under those notes springs from where it was. Closing plays a height exit on the notes, so the session shrinks closed. On the collection page, adding, removing, or moving an item plays the move on the items that stay. A removed item fades where it left. The items sit in a vertical stack.
+`samples/Sample` is a MauiReactor gallery. Home lists the playground, stagger, scrub, color spaces, timeline, path, matrix, enter / exit, in view, poses, press, drag, layout, and collection. The playground includes slide out, scale out, width, and corner radius alongside the fades, springs, and keyframes. Stagger can start from the start, the center, or the end of the grid. Scrub seeks a scale and a turn, and a cubic path, from sliders. Scrolling that page fades a card over the first 180px and tracks a second card as it crosses the viewport. Color compares HSV, RGB, and three HSV stops. The timeline page plays a sequence with seek, an overlap, a beat name that changes when the beat starts, a box and an image on one timeline, a hold, a yoyo, a repeat, a beat that plays twice before the fade, a stagger, and a spring. Path plays a cubic Bézier, a tangent-following arc, a quadratic hop, a cornered polyline, a slice of the cubic, and the arc walked backward. Matrix plays a turn, a tilt, and a flip. Enter / exit shows a slide and a scale. In view fades and slides a card in once, after it scrolls halfway onto the page. On the poses page, Play springs two cards toward an outline. Halfway, Pose comes back from the live position and keeps the spring speed. Snap jumps onto the outline, then comes back. On the press page, one card springs smaller while the pointer is down. Another grows under a mouse or trackpad. A finger on a phone only presses that card. On the drag page, a card snaps into the nearer of two pockets. Another stays left of a bar: a flick reaches the far pocket, and a slow release springs back. A third has three pockets: a flick from the left reaches the middle, and a slow release takes the nearest. A fourth glides to a stop inside an open field. A fifth snaps to a corner of a board. A sixth stays in place and grows, then settles small or large. Each one keeps the speed of the release. On the layout page, opening a session reveals its notes, and everything under those notes springs from where it was. Closing plays a height exit on the notes, so the session shrinks closed. On the collection page, adding, removing, or moving an item plays the move on the items that stay. A removed item fades where it left. The items sit in a vertical stack.
 
 ## Building
 

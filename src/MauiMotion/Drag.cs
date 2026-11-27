@@ -10,7 +10,7 @@ public sealed class DragPlane
     readonly Axis? _x;
     readonly Axis? _y;
 
-    /// <summary>An empty plane. Add <see cref="X(Func{Motion, Motion}, double?)"/> or <see cref="Y(Func{Motion, Motion}, double?)"/>.</summary>
+    /// <summary>An empty plane. Add <see cref="X(Func{Motion, Motion}, double?, IReadOnlyList{double}?)"/> or <see cref="Y(Func{Motion, Motion}, double?, IReadOnlyList{double}?)"/>.</summary>
     public DragPlane()
     {
     }
@@ -25,50 +25,51 @@ public sealed class DragPlane
 
     internal Axis? YAxis => _y;
 
-    internal readonly record struct Axis(Motion Motion, double Travel);
+    internal readonly record struct Axis(Motion Motion, double Travel, double[] Stops);
 
     /// <summary>
     /// Horizontal finger motion drives <paramref name="configure"/>, which receives an empty motion.
     /// A single <c>TranslateX</c> or <c>TranslateY</c> with a from and a to uses <c>to - from</c> as the finger travel.
     /// Pass <paramref name="travel"/> when the finger span and the property span differ, or when the recipe is not one translation.
+    /// <paramref name="stops"/> are optional progress stops. Omit them and the release uses 0 and 1.
     /// </summary>
-    public DragPlane X(Func<Motion, Motion> configure, double? travel = null)
+    public DragPlane X(Func<Motion, Motion> configure, double? travel = null, IReadOnlyList<double>? stops = null)
     {
         ArgumentNullException.ThrowIfNull(configure);
-        return X(configure(Motion.None), travel);
+        return X(configure(Motion.None), travel, stops);
     }
 
     /// <summary>
     /// Horizontal finger motion drives <paramref name="motion"/>.
-    /// Travel follows <see cref="X(Func{Motion, Motion}, double?)"/>.
+    /// Travel and <paramref name="stops"/> follow <see cref="X(Func{Motion, Motion}, double?, IReadOnlyList{double}?)"/>.
     /// </summary>
-    public DragPlane X(Motion motion, double? travel = null)
-        => With(motion, travel, horizontal: true);
+    public DragPlane X(Motion motion, double? travel = null, IReadOnlyList<double>? stops = null)
+        => With(motion, travel, horizontal: true, stops);
 
     /// <summary>
     /// Vertical finger motion drives <paramref name="configure"/>, which receives an empty motion.
-    /// Travel follows <see cref="X(Func{Motion, Motion}, double?)"/>.
+    /// Travel and <paramref name="stops"/> follow <see cref="X(Func{Motion, Motion}, double?, IReadOnlyList{double}?)"/>.
     /// </summary>
-    public DragPlane Y(Func<Motion, Motion> configure, double? travel = null)
+    public DragPlane Y(Func<Motion, Motion> configure, double? travel = null, IReadOnlyList<double>? stops = null)
     {
         ArgumentNullException.ThrowIfNull(configure);
-        return Y(configure(Motion.None), travel);
+        return Y(configure(Motion.None), travel, stops);
     }
 
     /// <summary>
     /// Vertical finger motion drives <paramref name="motion"/>.
-    /// Travel follows <see cref="X(Func{Motion, Motion}, double?)"/>.
+    /// Travel and <paramref name="stops"/> follow <see cref="X(Func{Motion, Motion}, double?, IReadOnlyList{double}?)"/>.
     /// </summary>
-    public DragPlane Y(Motion motion, double? travel = null)
-        => With(motion, travel, horizontal: false);
+    public DragPlane Y(Motion motion, double? travel = null, IReadOnlyList<double>? stops = null)
+        => With(motion, travel, horizontal: false, stops);
 
-    DragPlane With(Motion motion, double? travel, bool horizontal)
+    DragPlane With(Motion motion, double? travel, bool horizontal, IReadOnlyList<double>? stops)
     {
         ArgumentNullException.ThrowIfNull(motion);
         System.Diagnostics.Debug.Assert(
             motion.Duration > 0,
             "A drag recipe needs a duration so seek can park between the ends.");
-        var axis = new Axis(motion, TravelOf(motion, travel));
+        var axis = new Axis(motion, TravelOf(motion, travel), Detent.Normalize(stops));
         return horizontal ? new DragPlane(axis, _y) : new DragPlane(_x, axis);
     }
 
@@ -105,12 +106,14 @@ public sealed class DragPlane
 
 /// <summary>
 /// A drag bound by <see cref="Motion.Drag(VisualElement, Spring, Func{DragPlane, DragPlane})"/>.
-/// Each axis has its own player. <see cref="Release"/> springs that axis to an end.
+/// Each axis has its own player. <see cref="Release"/> springs that axis to a stop.
 /// <see cref="Coast"/> keeps the finger speed and rests where that speed dies.
 /// </summary>
 public sealed class Drag : IDisposable
 {
     readonly Spring _spring;
+    readonly double[] _xStops;
+    readonly double[] _yStops;
     readonly MotionClock? _xClock;
     readonly MotionClock? _yClock;
     bool _disposed;
@@ -118,6 +121,8 @@ public sealed class Drag : IDisposable
     internal Drag(VisualElement target, Spring spring, DragPlane plane, bool manual)
     {
         _spring = spring;
+        _xStops = plane.XAxis?.Stops ?? Detent.Ends;
+        _yStops = plane.YAxis?.Stops ?? Detent.Ends;
         if (plane.XAxis is { } x)
         {
             _xClock = new MotionClock(manual);
@@ -151,16 +156,18 @@ public sealed class Drag : IDisposable
     }
 
     /// <summary>
-    /// Springs each bound axis to an end.
-    /// Progress at or above 0.5 targets 1, unless that axis is moving faster than
-    /// 2 progress units per second toward the other end. Velocity is progress
-    /// units per second. Positive moves toward 1. Speed 0, including a canceled pan, uses the nearer end.
+    /// Springs each bound axis to a stop.
+    /// Omit stops and they are 0 and 1, so progress at or above 0.5 targets 1.
+    /// With more stops, a release slower than 2 targets the nearest stop.
+    /// The same distance picks the higher stop. A release faster than 2 toward
+    /// a neighbor targets that neighbor. Velocity is progress units per second.
+    /// Positive moves toward 1. Speed 0, including a canceled pan, uses the nearest stop.
     /// </summary>
     public void Release(double velocityX = 0, double velocityY = 0)
     {
         ThrowIfDisposed();
-        X?.SpringToNearest(_spring, velocityX);
-        Y?.SpringToNearest(_spring, velocityY);
+        X?.SpringToNearest(_spring, velocityX, _xStops);
+        Y?.SpringToNearest(_spring, velocityY, _yStops);
     }
 
     /// <summary>

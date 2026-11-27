@@ -30,6 +30,8 @@ public sealed class MotionPlayer : IDisposable
     double _springElapsedMs;
     Spring? _gestureSpring;
     bool _coast;
+    double _springTarget = double.NaN;
+    double? _parkedStop;
     bool _hasTimedTracks;
     bool _hasTrackSprings;
     double? _poseKick;
@@ -129,7 +131,7 @@ public sealed class MotionPlayer : IDisposable
     /// <summary>Playing toward the start.</summary>
     public bool IsReverse() => Status == MotionPlaybackStatus.Reverse;
 
-    /// <summary>Stopped in the middle by pause, cancel, or a seek inside the span.</summary>
+    /// <summary>Stopped in the middle by pause, cancel, a seek inside the span, or a drag settle on a stop between the ends.</summary>
     public bool IsPaused() => Status == MotionPlaybackStatus.Paused;
 
     /// <summary>A forward run reached the end, including the last repeat.</summary>
@@ -138,6 +140,7 @@ public sealed class MotionPlayer : IDisposable
     /// <summary>
     /// Eased 0–1. Increases on forward and decreases on reverse.
     /// A spring, including a drag settle, reports its position clamped to 0–1.
+    /// A settle on a stop between the ends reports that stop.
     /// A coast stays inside 0–1 and stops when it reaches an end.
     /// </summary>
     public double Progress { get; private set; }
@@ -279,6 +282,8 @@ public sealed class MotionPlayer : IDisposable
         _holdMs = 0;
         _gestureSpring = null;
         _coast = false;
+        _springTarget = double.NaN;
+        _parkedStop = null;
         _direction = 1;
         if (_captured)
         {
@@ -359,19 +364,18 @@ public sealed class MotionPlayer : IDisposable
     }
 
     /// <summary>
-    /// Progress per second. A faster release, toward an end, targets that end.
-    /// </summary>
-    const double Flick = 2;
-
-    /// <summary>
-    /// Springs to an end. Progress at or above 0.5 targets 1, and below 0.5
-    /// targets 0, unless <paramref name="velocity"/> is a flick.
-    /// Faster than 2 progress units per second toward an end targets that end.
+    /// Springs to a stop. <paramref name="stops"/> are progress units.
+    /// Omit them and the stops are 0 and 1, so progress at or above 0.5 targets 1.
+    /// With more stops, a release slower than 2 targets the nearest stop.
+    /// The same distance picks the higher stop. Faster than 2 toward a neighbor
+    /// targets that neighbor, not a stop further along.
     /// Positive velocity moves toward 1. The value is the spring's initial speed.
-    /// NaN and infinities count as 0. Delay, repeat, and yoyo do not continue this settle.
-    /// <see cref="Motion.WithReduceMotion"/> finishes on this call.
+    /// NaN and infinities count as 0. Stops outside 0–1 clamp. Duplicate stops collapse.
+    /// Fewer than two distinct stops means 0 and 1.
+    /// Delay, repeat, and yoyo do not continue this settle.
+    /// <see cref="Motion.WithReduceMotion"/> jumps to the chosen stop.
     /// </summary>
-    public void SpringToNearest(Spring spring, double velocity = 0)
+    public void SpringToNearest(Spring spring, double velocity = 0, double[]? stops = null)
     {
         ThrowIfDisposed();
         var progress = Progress;
@@ -380,8 +384,11 @@ public sealed class MotionPlayer : IDisposable
         if (double.IsNaN(velocity) || double.IsInfinity(velocity))
             velocity = 0;
 
+        var target = Detent.Choose(progress, velocity, stops);
+        var forward = target > progress + 1e-6 || target >= 1d - 1e-9;
         _coast = false;
-        var forward = velocity > Flick || (velocity >= -Flick && progress >= 0.5);
+        _springTarget = target;
+        _parkedStop = null;
         _autoRepeat = false;
         _holdMs = 0;
         _gestureSpring = spring;
@@ -397,13 +404,9 @@ public sealed class MotionPlayer : IDisposable
         _runArgs = NewArgs();
         Raise(Started);
 
-        var atEnd = forward ? progress >= 1 : progress <= 0;
-        if (atEnd || Motion.ReduceMotion == true)
+        if (Math.Abs(progress - target) <= 1e-6 || Motion.ReduceMotion == true)
         {
-            if (forward)
-                FinishForward();
-            else
-                FinishReverse(cancelPending: false);
+            Arrive(target);
             return;
         }
 
@@ -411,6 +414,50 @@ public sealed class MotionPlayer : IDisposable
             runtime.WriteSpringProgress(_x);
         ReportProgress();
         StartClock();
+    }
+
+    void Arrive(double target)
+    {
+        if (target >= 1d - 1e-9)
+        {
+            FinishForward();
+            return;
+        }
+
+        if (target <= 1e-9)
+        {
+            FinishReverse(cancelPending: false);
+            return;
+        }
+
+        ParkStop(target);
+    }
+
+    void ParkStop(double target)
+    {
+        _clock.Stop();
+        _x = target;
+        _v = 0;
+        _gestureSpring = null;
+        _springTarget = double.NaN;
+        _parkedStop = target;
+        _elapsedMs = target * Duration;
+        foreach (var runtime in _runtimes)
+            runtime.WriteSpringProgress(target);
+
+        if (IsRunning)
+        {
+            _pausedWas = Status;
+            SetStatus(MotionPlaybackStatus.Paused);
+            ReportProgress();
+            Raise(Paused);
+        }
+        else
+        {
+            ReportProgress();
+        }
+
+        CompletePending();
     }
 
     /// <summary>
@@ -434,6 +481,8 @@ public sealed class MotionPlayer : IDisposable
         _autoRepeat = false;
         _holdMs = 0;
         _coast = true;
+        _springTarget = double.NaN;
+        _parkedStop = null;
         _gestureSpring = spring;
         _x = progress;
         _v = velocity;
@@ -490,6 +539,8 @@ public sealed class MotionPlayer : IDisposable
     {
         u = double.IsNaN(u) || double.IsInfinity(u) ? 0 : Math.Clamp(u, 0, 1);
         _coast = false;
+        _springTarget = double.NaN;
+        _parkedStop = null;
         _gestureSpring = null;
         _autoRepeat = false;
         _clock.Stop();
@@ -629,6 +680,8 @@ public sealed class MotionPlayer : IDisposable
 
         _gestureSpring = null;
         _coast = false;
+        _springTarget = double.NaN;
+        _parkedStop = null;
         _direction = running == MotionPlaybackStatus.Forward ? 1 : -1;
         if (recapture)
         {
@@ -914,7 +967,7 @@ public sealed class MotionPlayer : IDisposable
             return;
         }
 
-        var target = _direction > 0 ? 1d : 0d;
+        var target = double.IsNaN(_springTarget) ? (_direction > 0 ? 1d : 0d) : _springTarget;
         SpringStep.Integrate(spring, deltaMs, target, ref _x, ref _v, ref _springElapsedMs, out var settled);
         foreach (var runtime in _runtimes)
             runtime.WriteSpringProgress(_x);
@@ -922,10 +975,7 @@ public sealed class MotionPlayer : IDisposable
         if (!settled)
             return;
 
-        if (_direction > 0)
-            FinishForward();
-        else
-            FinishReverse(cancelPending: false);
+        Arrive(target);
     }
 
     void ResetSpring(double x, bool kick = false)
@@ -969,6 +1019,8 @@ public sealed class MotionPlayer : IDisposable
     {
         _clock.Stop();
         _gestureSpring = null;
+        _springTarget = double.NaN;
+        _parkedStop = null;
         _elapsedMs = Duration;
         _x = 1;
         _v = 0;
@@ -986,6 +1038,8 @@ public sealed class MotionPlayer : IDisposable
     {
         _clock.Stop();
         _gestureSpring = null;
+        _springTarget = double.NaN;
+        _parkedStop = null;
         _elapsedMs = 0;
         _x = 0;
         _v = 0;
@@ -1095,7 +1149,7 @@ public sealed class MotionPlayer : IDisposable
 
     void ReportProgress()
     {
-        var progress = _coast
+        var progress = _coast || _parkedStop is not null
             ? _x
             : DrivingSpring
                 ? PlaybackU

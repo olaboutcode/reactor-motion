@@ -522,6 +522,338 @@ public sealed class MotionDragTests
     }
 
     [Fact]
+    public void A_slow_release_settles_on_the_nearest_stop()
+    {
+        var box = new BoxView();
+        var drag = OpenStops(box, 0, 0.5, 1);
+        drag.Seek(0.3);
+
+        drag.Release(0);
+        Settle(drag);
+
+        Assert.Equal(50, box.TranslationX, 3);
+        Assert.Equal(0.5, drag.X!.Progress, 3);
+        Assert.True(drag.X.IsPaused());
+        Assert.False(drag.X.IsCompleted());
+        Assert.False(drag.X.IsDismissed());
+    }
+
+    [Fact]
+    public void A_slow_release_closer_to_the_start_settles_there()
+    {
+        var box = new BoxView();
+        var drag = OpenStops(box, 0, 0.5, 1);
+        drag.Seek(0.2);
+
+        drag.Release(0);
+        Settle(drag);
+
+        Assert.Equal(0, box.TranslationX, 3);
+        Assert.True(drag.X!.IsDismissed());
+    }
+
+    [Fact]
+    public void A_flick_targets_the_next_stop_and_does_not_skip()
+    {
+        var box = new BoxView();
+        var drag = OpenStops(box, 0, 0.5, 1);
+        drag.Seek(0.2);
+
+        drag.Release(3);
+        Assert.True(drag.X!.IsForward());
+        Settle(drag);
+
+        Assert.Equal(50, box.TranslationX, 3);
+        Assert.True(drag.X.IsPaused());
+        Assert.False(drag.X.IsCompleted());
+    }
+
+    [Fact]
+    public void A_flick_from_past_the_middle_stop_targets_the_end()
+    {
+        var box = new BoxView();
+        var drag = OpenStops(box, 0, 0.5, 1);
+        drag.Seek(0.6);
+
+        drag.Release(3);
+        Settle(drag);
+
+        Assert.Equal(100, box.TranslationX, 3);
+        Assert.True(drag.X!.IsCompleted());
+    }
+
+    [Fact]
+    public void A_flick_toward_the_start_targets_the_neighbor_stop()
+    {
+        var box = new BoxView();
+        var drag = OpenStops(box, 0, 0.5, 1);
+        drag.Seek(0.8);
+
+        drag.Release(-3);
+        Assert.True(drag.X!.IsReverse());
+        Settle(drag);
+
+        Assert.Equal(50, box.TranslationX, 3);
+        Assert.True(drag.X.IsPaused());
+        Assert.False(drag.X.IsDismissed());
+    }
+
+    [Fact]
+    public void A_release_at_the_flick_threshold_uses_the_nearest_stop()
+    {
+        var box = new BoxView();
+        var drag = OpenStops(box, 0, 0.5, 1);
+        drag.Seek(0.2);
+
+        drag.Release(2);
+        Settle(drag);
+
+        Assert.Equal(0, box.TranslationX, 3);
+        Assert.True(drag.X!.IsDismissed());
+    }
+
+    [Fact]
+    public void An_equal_distance_picks_the_higher_stop()
+    {
+        var box = new BoxView();
+        var drag = OpenStops(box, 0, 0.5, 1);
+        drag.Seek(0.25);
+
+        drag.Release(0);
+        Settle(drag);
+
+        Assert.Equal(50, box.TranslationX, 3);
+        Assert.True(drag.X!.IsPaused());
+    }
+
+    [Fact]
+    public void A_flick_with_no_stop_ahead_uses_the_nearest_stop()
+    {
+        var box = new BoxView();
+        var drag = OpenStops(box, 0, 0.5);
+        drag.Seek(0.8);
+
+        drag.Release(3);
+        Settle(drag);
+
+        Assert.Equal(50, box.TranslationX, 3);
+        Assert.True(drag.X!.IsPaused());
+    }
+
+    [Fact]
+    public void Stops_outside_the_span_clamp_and_duplicates_collapse()
+    {
+        var box = new BoxView();
+        var drag = OpenStops(box, -1, 0.5, 0.5, 2);
+        drag.Seek(0.3);
+
+        drag.Release(0);
+        Settle(drag);
+
+        Assert.Equal(50, box.TranslationX, 3);
+        Assert.True(drag.X!.IsPaused());
+    }
+
+    [Fact]
+    public void Fewer_than_two_distinct_stops_uses_the_ends()
+    {
+        var box = new BoxView();
+        var drag = OpenStops(box, 0.4, double.NaN);
+        drag.Seek(0.6);
+
+        drag.Release(0);
+        Settle(drag);
+
+        Assert.Equal(100, box.TranslationX, 3);
+        Assert.True(drag.X!.IsCompleted());
+    }
+
+    [Fact]
+    public void Non_finite_stops_are_dropped()
+    {
+        var box = new BoxView();
+        var drag = OpenStops(box, double.NaN, double.PositiveInfinity);
+        drag.Seek(0.6);
+
+        drag.Release(0);
+        Settle(drag);
+
+        Assert.Equal(100, box.TranslationX, 3);
+        Assert.True(drag.X!.IsCompleted());
+    }
+
+    [Fact]
+    public void A_non_finite_velocity_uses_the_nearest_stop()
+    {
+        var box = new BoxView();
+        var drag = OpenStops(box, 0, 0.5, 1);
+        drag.Seek(0.2);
+
+        drag.Release(double.PositiveInfinity);
+        Settle(drag);
+
+        Assert.Equal(0, box.TranslationX, 3);
+        Assert.True(drag.X!.IsDismissed());
+    }
+
+    [Fact]
+    public void Reduce_motion_jumps_to_the_chosen_stop()
+    {
+        var box = new BoxView();
+        var drag = Motion.Drag(
+            box,
+            Spring.Default,
+            plane => plane.X(
+                motion => motion
+                    .TranslateX(0, 100)
+                    .WithDuration(400)
+                    .WithEasing(Easing.Linear)
+                    .WithReduceMotion(true),
+                stops: [0, 0.5, 1]),
+            manual: true);
+
+        drag.Seek(0.2);
+        drag.Release(3);
+
+        Assert.Equal(50, box.TranslationX, 3);
+        Assert.Equal(0.5, drag.X!.Progress, 3);
+        Assert.True(drag.X.IsPaused());
+        Assert.False(drag.X.IsCompleted());
+    }
+
+    [Fact]
+    public void A_coast_with_stops_does_not_snap_to_a_stop()
+    {
+        var box = new BoxView();
+        var drag = Motion.Drag(
+            box,
+            new Spring(400, 10, 1),
+            plane => plane.X(
+                motion => motion.TranslateX(0, 100).WithDuration(400).WithEasing(Easing.Linear),
+                stops: [0, 0.5, 1]),
+            manual: true);
+
+        drag.Seek(0.3);
+        drag.Coast(4);
+        Settle(drag);
+
+        Assert.InRange(box.TranslationX, 60, 90);
+        Assert.True(drag.X!.IsPaused());
+    }
+
+    [Fact]
+    public void Each_axis_uses_its_own_stops()
+    {
+        var box = new BoxView();
+        var drag = Motion.Drag(
+            box,
+            Spring.Default,
+            plane => plane
+                .X(
+                    motion => motion.TranslateX(0, 100).WithDuration(400).WithEasing(Easing.Linear),
+                    stops: [0, 0.5, 1])
+                .Y(motion => motion.TranslateY(0, 100).WithDuration(400).WithEasing(Easing.Linear)),
+            manual: true);
+
+        drag.Seek(0.3, 0.6);
+        drag.Release(0, 0);
+        Settle(drag);
+
+        Assert.Equal(50, box.TranslationX, 3);
+        Assert.Equal(100, box.TranslationY, 3);
+        Assert.True(drag.X!.IsPaused());
+        Assert.True(drag.Y!.IsCompleted());
+    }
+
+    [Fact]
+    public void Delay_repeat_and_yoyo_do_not_continue_an_interior_stop()
+    {
+        var box = new BoxView();
+        var drag = Motion.Drag(
+            box,
+            Spring.Default,
+            plane => plane.X(
+                motion => motion
+                    .TranslateX(0, 100)
+                    .WithDuration(400)
+                    .WithEasing(Easing.Linear)
+                    .WithDelay(5000)
+                    .Repeat(4)
+                    .Yoyo(),
+                stops: [0, 0.5, 1]),
+            manual: true);
+
+        drag.Seek(0.3);
+        drag.Release(0);
+        Settle(drag);
+
+        Assert.Equal(50, box.TranslationX, 3);
+        Assert.Equal(0.5, drag.X!.Progress, 3);
+        Assert.True(drag.X.IsPaused());
+
+        drag.Tick(16);
+        drag.Tick(16);
+        Assert.Equal(50, box.TranslationX, 3);
+        Assert.True(drag.X.IsPaused());
+    }
+
+    [Fact]
+    public void A_release_on_a_stop_stays_there()
+    {
+        var box = new BoxView();
+        var drag = OpenStops(box, 0, 0.5, 1);
+        drag.Seek(0.5);
+
+        drag.Release(0);
+
+        Assert.Equal(50, box.TranslationX, 3);
+        Assert.Equal(0.5, drag.X!.Progress, 3);
+        Assert.True(drag.X.IsPaused());
+        Assert.False(drag.X.IsRunning);
+        drag.Tick(16);
+        Assert.Equal(50, box.TranslationX, 3);
+    }
+
+    [Fact]
+    public void Seek_after_an_interior_stop_parks_and_a_later_tick_does_not_move()
+    {
+        var box = new BoxView();
+        var drag = OpenStops(box, 0, 0.5, 1);
+        drag.Seek(0.3);
+        drag.Release(0);
+        Settle(drag);
+        Assert.Equal(50, box.TranslationX, 3);
+
+        drag.Seek(0.2);
+        Assert.Equal(20, box.TranslationX, 3);
+        Assert.True(drag.X!.IsPaused());
+        drag.Tick(16);
+
+        Assert.Equal(20, box.TranslationX, 3);
+        Assert.True(drag.X.IsPaused());
+    }
+
+    [Fact]
+    public void An_interior_stop_keeps_its_progress_when_the_easing_is_not_linear()
+    {
+        var box = new BoxView();
+        var drag = Motion.Drag(
+            box,
+            Spring.Default,
+            plane => plane.X(
+                motion => motion.TranslateX(0, 100).WithDuration(400).WithEasing(Easing.CubicOut),
+                stops: [0, 0.5, 1]),
+            manual: true);
+
+        drag.Seek(0.5);
+        drag.Release(0);
+
+        Assert.Equal(0.5, drag.X!.Progress, 3);
+        Assert.Equal(50, box.TranslationX, 3);
+        Assert.True(drag.X.IsPaused());
+    }
+
+    [Fact]
     public void Release_after_dispose_throws()
     {
         var drag = Open(new BoxView());
@@ -536,6 +868,15 @@ public sealed class MotionDragTests
             box,
             Spring.Default,
             plane => plane.X(motion => motion.TranslateX(0, 100).WithDuration(400).WithEasing(Easing.Linear)),
+            manual: true);
+
+    static Drag OpenStops(BoxView box, params double[] stops)
+        => Motion.Drag(
+            box,
+            Spring.Default,
+            plane => plane.X(
+                motion => motion.TranslateX(0, 100).WithDuration(400).WithEasing(Easing.Linear),
+                stops: stops),
             manual: true);
 
     static Drag OpenCoast(BoxView box, Spring spring)

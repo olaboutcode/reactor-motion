@@ -1,7 +1,7 @@
 namespace Sample.Components;
 
 /// <summary>
-/// Five drag settles: a nearer pocket, a flick across a bar, a glide in an open field, a corner, and a size.
+/// Six drag settles: a nearer pocket, a flick across a bar, three pockets, a glide in an open field, a corner, and a size.
 /// </summary>
 sealed class MotionDragPage : Component
 {
@@ -32,6 +32,10 @@ sealed class MotionDragPage : Component
                         Title("Flick"),
                         Caption("Stay left of the bar and flick. The card reaches the far pocket. A slow release returns."),
                         Flick(),
+                        Rule(),
+                        Title("Stops"),
+                        Caption("Three pockets. A flick from the left reaches the middle. A slow release takes the nearest."),
+                        Stops(),
                         Rule(),
                         Title("Glide"),
                         Caption("Drag the card anywhere in the field. It glides to a stop there."),
@@ -106,6 +110,19 @@ sealed class MotionDragPage : Component
                 .VCenter()
                 .Drag(ReleaseSpring, plane => plane.X(
                     motion => motion.TranslateX(0, Travel).WithDuration(400).WithEasing(Easing.Linear)))
+        )
+        .HCenter();
+
+    static MauiReactor.Grid Stops()
+        => Grid("76", $"{LaneWidth}",
+            Pocket(0, Colors.MediumSeaGreen),
+            Pocket(Travel / 2, Colors.MediumSeaGreen, 0.45f),
+            Pocket(Travel, Colors.MediumSeaGreen),
+            CardView(Colors.MediumSeaGreen)
+                .VCenter()
+                .Drag(ReleaseSpring, plane => plane.X(
+                    motion => motion.TranslateX(0, Travel).WithDuration(400).WithEasing(Easing.Linear),
+                    stops: [0, 0.5, 1]))
         )
         .HCenter();
 
