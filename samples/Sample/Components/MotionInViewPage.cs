@@ -19,9 +19,7 @@ sealed class MotionInViewPage : Component
                             .HCenter()
                             .HorizontalTextAlignment(TextAlignment.Center)
                             .TextColor(Colors.Gray),
-                        BoxView()
-                            .HeightRequest(840)
-                            .BackgroundColor(Colors.Transparent),
+                        Trail(),
                         BoxView()
                             .HeightRequest(96)
                             .WidthRequest(96)
@@ -33,9 +31,7 @@ sealed class MotionInViewPage : Component
                                 .SlideIn(SlideFrom.Bottom, 124)
                                 .Rotate(360)
                                 .WithDuration(420)),
-                        BoxView()
-                            .HeightRequest(840)
-                            .BackgroundColor(Colors.Transparent),
+                        Trail(),
                         BoxView()
                             .HeightRequest(96)
                             .WidthRequest(96)
@@ -58,4 +54,17 @@ sealed class MotionInViewPage : Component
             )
         )
         .HideNavigationBar();
+
+    static MauiReactor.Grid Trail()
+        => Grid("*,*,*", "*",
+                Cue().GridRow(0).VStart(),
+                Cue().GridRow(1).VCenter(),
+                Cue().GridRow(2).VEnd())
+            .HeightRequest(840);
+
+    static MauiReactor.Label Cue()
+        => Label("Scroll  ↓")
+            .FontSize(13)
+            .TextColor(Colors.Gray)
+            .HCenter();
 }
