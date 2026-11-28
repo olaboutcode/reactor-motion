@@ -1263,6 +1263,26 @@ static PathGeometry Arc()
 }
 ```
 
+### SVG document
+
+```csharp
+var route = SvgPath.Parse(markup, mapBounds)
+    .First(path => path.Id == "route");
+
+Photo().BindMotion(m => m
+    .Path(route.Data)
+    .WithDuration(6000)
+    .WithEasing(Easing.Linear));
+```
+
+`SvgPath` is one followable shape. `Parse` returns `path`, `line`, `polyline`, `polygon`, `rect`, `circle`, and `ellipse` in document order. A shape that is not a `path` comes back as a `d` string. `Motion.Path` walks that string. `from`, `to`, and `orient` stay on `Path`.
+
+`Id` is the element's id. A missing or empty id is null, and no id is invented. The shape stays in the list. Two elements with the same id both stay, in document order.
+
+`Parse(markup)` bakes each element's `transform`, and the transforms of its parent groups, into `Data`. Coordinates stay in user units. `Parse(markup, into)` also reads the root `viewBox` and stretches it onto `into`. `into` is the rectangle where the SVG is drawn, in the same coordinates the view translates in. Without a positive root `viewBox`, coordinates stay in user units. An arc under a transform is written as cubics that stay within half a point of the arc.
+
+Invalid markup throws when `Parse` is called. A document with no followable shapes returns an empty list. Several roads are several entries, then several `Path` calls on a timeline.
+
 ### One player per property
 
 Each property of a view has one live player. A fade and a slide on the same view run together. A second player that writes a property the first one writes takes that property. The first player keeps every property the new recipe does not write. When the first player has nothing left, it is disposed. The dispose happens after the new player is registered, and a debug build logs the steal.
