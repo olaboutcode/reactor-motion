@@ -1,4 +1,3 @@
-using System.Globalization;
 using System.Text;
 using System.Xml.Linq;
 
@@ -109,7 +108,14 @@ internal static class SvgPathReader
         var y1 = Length(element, "y1");
         var x2 = Length(element, "x2");
         var y2 = Length(element, "y2");
-        return Form("M{0} {1} L{2} {3}", x1, y1, x2, y2);
+        var text = new StringBuilder();
+        Op(text, 'M');
+        Num(text, x1);
+        Num(text, y1);
+        Op(text, 'L');
+        Num(text, x2);
+        Num(text, y2);
+        return text.ToString();
     }
 
     static string Poly(XElement element, bool close)
@@ -122,9 +128,17 @@ internal static class SvgPathReader
         if (values.Count < 2 || values.Count % 2 != 0)
             throw new FormatException("A points list must have pairs.");
 
-        var written = new StringBuilder(Form("M{0} {1}", values[0], values[1]));
+        var written = new StringBuilder();
+        Op(written, 'M');
+        Num(written, values[0]);
+        Num(written, values[1]);
         for (var i = 2; i < values.Count; i += 2)
-            written.Append(Form(" L{0} {1}", values[i], values[i + 1]));
+        {
+            Op(written, 'L');
+            Num(written, values[i]);
+            Num(written, values[i + 1]);
+        }
+
         if (close)
             written.Append(" Z");
 
@@ -138,12 +152,25 @@ internal static class SvgPathReader
         var width = RequireSize(element, "width");
         var height = RequireSize(element, "height");
         if (width == 0 || height == 0)
-            return Form("M{0} {1}", x, y);
+            return Move(x, y);
 
         var rx = Corner(element, "rx", "ry", width);
         var ry = Corner(element, "ry", "rx", height);
         if (rx <= 0 || ry <= 0)
-            return Form("M{0} {1} H{2} V{3} H{4} Z", x, y, x + width, y + height, x);
+        {
+            var text = new StringBuilder();
+            Op(text, 'M');
+            Num(text, x);
+            Num(text, y);
+            Op(text, 'H');
+            Num(text, x + width);
+            Op(text, 'V');
+            Num(text, y + height);
+            Op(text, 'H');
+            Num(text, x);
+            text.Append(" Z");
+            return text.ToString();
+        }
 
         return Rounded(x, y, width, height, rx, ry);
     }
@@ -155,32 +182,76 @@ internal static class SvgPathReader
         var rx = circle ? RequireRadius(element, "r") : RequireRadius(element, "rx");
         var ry = circle ? rx : RequireRadius(element, "ry");
         if (rx == 0 || ry == 0)
-            return Form("M{0} {1}", cx, cy);
+            return Move(cx, cy);
 
         var left = cx - rx;
         var right = cx + rx;
-        return Form(
-            "M{0} {1} A{2} {3} 0 1 1 {4} {5} A{2} {3} 0 1 1 {0} {1} Z",
-            left, cy, rx, ry, right, cy);
+        var text = new StringBuilder();
+        Op(text, 'M');
+        Num(text, left);
+        Num(text, cy);
+        Arc(text, rx, ry, 1, 1, right, cy);
+        Arc(text, rx, ry, 1, 1, left, cy);
+        text.Append(" Z");
+        return text.ToString();
     }
 
     static string Rounded(double x, double y, double width, double height, double rx, double ry)
-        => Form(
-            "M{0} {1} H{2} A{3} {4} 0 0 1 {5} {6} V{7} A{3} {4} 0 0 1 {8} {9} H{10} A{3} {4} 0 0 1 {11} {12} V{13} A{3} {4} 0 0 1 {0} {1} Z",
-            x + rx,
-            y,
-            x + width - rx,
-            rx,
-            ry,
-            x + width,
-            y + ry,
-            y + height - ry,
-            x + width - rx,
-            y + height,
-            x + rx,
-            x,
-            y + height - ry,
-            y + ry);
+    {
+        var text = new StringBuilder();
+        Op(text, 'M');
+        Num(text, x + rx);
+        Num(text, y);
+        Op(text, 'H');
+        Num(text, x + width - rx);
+        Arc(text, rx, ry, 0, 1, x + width, y + ry);
+        Op(text, 'V');
+        Num(text, y + height - ry);
+        Arc(text, rx, ry, 0, 1, x + width - rx, y + height);
+        Op(text, 'H');
+        Num(text, x + rx);
+        Arc(text, rx, ry, 0, 1, x, y + height - ry);
+        Op(text, 'V');
+        Num(text, y + ry);
+        Arc(text, rx, ry, 0, 1, x + rx, y);
+        text.Append(" Z");
+        return text.ToString();
+    }
+
+    static string Move(double x, double y)
+    {
+        var text = new StringBuilder();
+        Op(text, 'M');
+        Num(text, x);
+        Num(text, y);
+        return text.ToString();
+    }
+
+    static void Arc(StringBuilder text, double rx, double ry, double large, double sweep, double x, double y)
+    {
+        Op(text, 'A');
+        Num(text, rx);
+        Num(text, ry);
+        Num(text, 0);
+        Num(text, large);
+        Num(text, sweep);
+        Num(text, x);
+        Num(text, y);
+    }
+
+    static void Op(StringBuilder text, char command)
+    {
+        if (text.Length > 0)
+            text.Append(' ');
+        text.Append(command);
+    }
+
+    static void Num(StringBuilder text, double value)
+    {
+        if (text.Length > 0 && !char.IsAsciiLetter(text[^1]))
+            text.Append(' ');
+        SvgNumbers.AppendNumber(text, value);
+    }
 
     static double Corner(XElement element, string name, string other, double limit)
     {
@@ -217,12 +288,4 @@ internal static class SvgPathReader
     static double Length(XElement element, string name)
         => SvgNumbers.ParseLength(element.Attribute(name)?.Value);
 
-    static string Form(string format, params double[] numbers)
-    {
-        var printed = new object[numbers.Length];
-        for (var i = 0; i < numbers.Length; i++)
-            printed[i] = numbers[i].ToString("0.######", CultureInfo.InvariantCulture);
-
-        return string.Format(CultureInfo.InvariantCulture, format, printed);
-    }
 }

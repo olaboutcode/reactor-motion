@@ -37,6 +37,7 @@ internal static class SvgTransform
 
         var matrix = Affine.Identity;
         var i = 0;
+        Span<double> args = stackalloc double[6];
         while (i < text.Length)
         {
             SvgNumbers.Skip(text, ref i);
@@ -46,27 +47,33 @@ internal static class SvgTransform
             var name = ReadName(text, ref i);
             SvgNumbers.Skip(text, ref i);
             if (i >= text.Length || text[i] != '(')
-                throw new FormatException($"The transform '{name}' needs parentheses.");
+                throw new FormatException($"The transform '{name.ToString()}' needs parentheses.");
 
             i++;
-            var args = ReadArgs(text, ref i);
-            matrix = Function(name, args).Then(matrix);
+            var count = ReadArgs(text, ref i, args);
+            matrix = Function(name, args[..count]).Then(matrix);
         }
 
         return matrix;
     }
 
-    static Affine Function(string name, List<double> args)
-        => name switch
-        {
-            "matrix" when args.Count == 6 => new Affine(args[0], args[1], args[2], args[3], args[4], args[5]),
-            "translate" when args.Count is 1 or 2 => Translate(args[0], args.Count == 2 ? args[1] : 0),
-            "scale" when args.Count is 1 or 2 => new Affine(args[0], 0, 0, args.Count == 2 ? args[1] : args[0], 0, 0),
-            "rotate" when args.Count is 1 or 3 => Rotate(args[0], args.Count == 3 ? args[1] : 0, args.Count == 3 ? args[2] : 0),
-            "skewX" when args.Count == 1 => SkewX(args[0]),
-            "skewY" when args.Count == 1 => SkewY(args[0]),
-            _ => throw new FormatException($"The transform '{name}' is not valid."),
-        };
+    static Affine Function(ReadOnlySpan<char> name, ReadOnlySpan<double> args)
+    {
+        if (name.Equals("matrix", StringComparison.Ordinal) && args.Length == 6)
+            return new Affine(args[0], args[1], args[2], args[3], args[4], args[5]);
+        if (name.Equals("translate", StringComparison.Ordinal) && args.Length is 1 or 2)
+            return Translate(args[0], args.Length == 2 ? args[1] : 0);
+        if (name.Equals("scale", StringComparison.Ordinal) && args.Length is 1 or 2)
+            return new Affine(args[0], 0, 0, args.Length == 2 ? args[1] : args[0], 0, 0);
+        if (name.Equals("rotate", StringComparison.Ordinal) && args.Length is 1 or 3)
+            return Rotate(args[0], args.Length == 3 ? args[1] : 0, args.Length == 3 ? args[2] : 0);
+        if (name.Equals("skewX", StringComparison.Ordinal) && args.Length == 1)
+            return SkewX(args[0]);
+        if (name.Equals("skewY", StringComparison.Ordinal) && args.Length == 1)
+            return SkewY(args[0]);
+
+        throw new FormatException($"The transform '{name.ToString()}' is not valid.");
+    }
 
     static Affine Translate(double x, double y)
         => new(1, 0, 0, 1, x, y);
@@ -95,7 +102,7 @@ internal static class SvgTransform
         return new Affine(1, tilt, 0, 1, 0, 0);
     }
 
-    static string ReadName(string text, ref int i)
+    static ReadOnlySpan<char> ReadName(string text, ref int i)
     {
         var start = i;
         while (i < text.Length && char.IsAsciiLetter(text[i]))
@@ -103,26 +110,29 @@ internal static class SvgTransform
         if (i == start)
             throw new FormatException("A transform function name is missing.");
 
-        return text[start..i];
+        return text.AsSpan(start, i - start);
     }
 
-    static List<double> ReadArgs(string text, ref int i)
+    static int ReadArgs(string text, ref int i, Span<double> args)
     {
-        var args = new List<double>();
+        var count = 0;
         while (true)
         {
-            SkipArg(text, ref i, args.Count == 0);
+            SkipArg(text, ref i, count == 0);
             if (i >= text.Length)
                 throw new FormatException("A transform function is missing ')'.");
             if (text[i] == ')')
             {
                 i++;
-                return args;
+                return count;
             }
 
             if (!SvgNumbers.TryRead(text, ref i, out var value))
                 throw new FormatException("A transform argument is not a number.");
-            args.Add(value);
+            if (count == args.Length)
+                throw new FormatException("The transform is not valid.");
+
+            args[count++] = value;
         }
     }
 

@@ -73,6 +73,10 @@ public sealed class SvgPathTests
             """);
 
         Assert.Equal("line poly gon box dot oval", string.Join(' ', paths.Select(path => path.Id)));
+        Assert.Equal("M0 1 L10 1", paths[0].Data);
+        Assert.Equal("M0 0 L10 0 L10 10", paths[1].Data);
+        Assert.Equal("M0 0 L10 0 L10 10 L0 10 Z", paths[2].Data);
+        Assert.Equal("M0 0 H30 V10 H0 Z", paths[3].Data);
         Assert.Equal(new Point(10, 1), At(paths[0].Data, 1));
         Assert.Equal(new Point(10, 10), At(paths[1].Data, 1));
         Assert.Equal(new Point(0, 0), At(paths[2].Data, 1));
@@ -106,6 +110,7 @@ public sealed class SvgPathTests
         Assert.Equal(new Point(5, 6), At(nested.Data, 1));
 
         var one = Only("""<path transform="translate(10,0) scale(2)" d="M1,0 L2,0"/>""");
+        Assert.Equal("M12 0 L14 0", one.Data);
         Assert.Equal(new Point(12, 0), At(one.Data, 0));
         Assert.Equal(new Point(14, 0), At(one.Data, 1));
 

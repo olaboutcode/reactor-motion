@@ -1,4 +1,3 @@
-using System.Globalization;
 using System.Text;
 using Microsoft.Maui.Controls.Shapes;
 
@@ -282,13 +281,10 @@ internal static class SvgPathBake
 
     static void Append(StringBuilder text, Point point)
     {
-        text.Append(Format(point.X));
+        SvgNumbers.AppendNumber(text, point.X);
         text.Append(' ');
-        text.Append(Format(point.Y));
+        SvgNumbers.AppendNumber(text, point.Y);
     }
-
-    static string Format(double value)
-        => value.ToString("0.######", CultureInfo.InvariantCulture);
 
     readonly struct ArcBasis(
         double cx,

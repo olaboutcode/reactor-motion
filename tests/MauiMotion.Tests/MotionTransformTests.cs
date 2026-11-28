@@ -91,4 +91,33 @@ public sealed class MotionTransformTests
     {
         Assert.Throws<ArgumentNullException>(() => Motion.None.Transform(null!));
     }
+
+    [Fact]
+    public void Repeated_matrix_skips_a_channel_that_matches()
+    {
+        var box = new BoxView();
+        var writes = new List<string>();
+        box.PropertyChanged += (_, args) =>
+        {
+            if (args.PropertyName is not null)
+                writes.Add(args.PropertyName);
+        };
+
+        MatrixPlane.Apply(box, Matrix4.Identity.Translate(10, 4));
+        writes.Clear();
+        MatrixPlane.Apply(box, Matrix4.Identity.Translate(10, 4));
+        Assert.Empty(writes);
+
+        MatrixPlane.Apply(box, Matrix4.Identity.Translate(12, 4));
+        Assert.Equal(nameof(VisualElement.TranslationX), Assert.Single(writes), StringComparer.Ordinal);
+        Assert.Equal(12, box.TranslationX, 3);
+        Assert.Equal(4, box.TranslationY, 3);
+
+        MatrixPlane.Forget(box);
+        box.TranslationX = 0;
+        writes.Clear();
+        MatrixPlane.Apply(box, Matrix4.Identity.Translate(12, 4));
+        Assert.Equal(12, box.TranslationX, 3);
+        Assert.Contains(writes, name => string.Equals(name, nameof(VisualElement.TranslationX), StringComparison.Ordinal));
+    }
 }

@@ -665,6 +665,7 @@ internal sealed class TrackRuntime
         _lastWritten = null;
         _hasPoint = false;
         _hasHeading = false;
+        MatrixPlane.Forget(_target);
     }
 
     bool SkipPinned(VisualElement view)
@@ -676,6 +677,7 @@ internal sealed class TrackRuntime
         _lastWritten = null;
         _hasPoint = false;
         _hasHeading = false;
+        MatrixPlane.Forget(view);
         if (!_loggedPinSkip)
         {
             _loggedPinSkip = true;
@@ -693,6 +695,7 @@ internal sealed class TrackRuntime
             _lastWritten = null;
             _hasPoint = false;
             _hasHeading = false;
+            MatrixPlane.Forget(view);
             return false;
         }
 

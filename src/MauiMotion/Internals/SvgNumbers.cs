@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Text;
 
 namespace Reactor.Motion.Internals;
 
@@ -109,4 +110,16 @@ internal static class SvgNumbers
 
     static bool HasPx(string text, int i)
         => i + 1 < text.Length && text[i] == 'p' && text[i + 1] == 'x';
+
+    public static void AppendNumber(StringBuilder text, double value)
+    {
+        Span<char> buffer = stackalloc char[64];
+        if (value.TryFormat(buffer, out var written, "0.######", CultureInfo.InvariantCulture))
+        {
+            text.Append(buffer[..written]);
+            return;
+        }
+
+        text.Append(value.ToString("0.######", CultureInfo.InvariantCulture));
+    }
 }

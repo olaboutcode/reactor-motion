@@ -5,10 +5,14 @@ namespace Reactor.Motion.Internals;
 /// <summary>
 /// One dispatcher timer for every live <see cref="MotionClock"/>.
 /// A manual clock never joins. Tests can <see cref="Dispatch"/> a delta directly.
+/// A tick reuses the clock list. A clock that joins during that tick is pumped
+/// on the next one. A clock that has stopped is not pumped.
 /// </summary>
 internal static class SharedTicker
 {
     static readonly List<MotionClock> Clocks = [];
+    static MotionClock[] _snapshot = [];
+    static bool _dirty = true;
     static IDispatcherTimer? _timer;
     static long _lastTicks;
 
@@ -16,15 +20,30 @@ internal static class SharedTicker
     {
         ArgumentNullException.ThrowIfNull(clock);
         if (!Clocks.Contains(clock))
+        {
             Clocks.Add(clock);
+            _dirty = true;
+        }
+
         EnsureTimer();
     }
 
     public static void Leave(MotionClock clock)
     {
-        Clocks.Remove(clock);
+        if (!Clocks.Remove(clock))
+        {
+            if (Clocks.Count == 0)
+                _timer?.Stop();
+            return;
+        }
+
+        _dirty = true;
         if (Clocks.Count == 0)
+        {
+            _snapshot = [];
+            _dirty = false;
             _timer?.Stop();
+        }
     }
 
     public static void Dispatch(double deltaMs)
@@ -32,9 +51,19 @@ internal static class SharedTicker
         if (Clocks.Count == 0 || deltaMs <= 0)
             return;
 
-        var snapshot = Clocks.ToArray();
+        var snapshot = Snapshot();
         foreach (var clock in snapshot)
             clock.Pump(deltaMs);
+    }
+
+    static ReadOnlySpan<MotionClock> Snapshot()
+    {
+        if (!_dirty)
+            return _snapshot;
+
+        _snapshot = Clocks.ToArray();
+        _dirty = false;
+        return _snapshot;
     }
 
     static void EnsureTimer()

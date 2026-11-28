@@ -205,6 +205,65 @@ public sealed class MotionEngineGapTests
         }
     }
 
+    [Fact]
+    public void Shared_ticker_holds_a_join_until_the_next_tick()
+    {
+        var first = new MotionClock();
+        var second = new MotionClock();
+        var firstDelta = 0d;
+        var secondDelta = 0d;
+        first.Connect(delta =>
+        {
+            firstDelta += delta;
+            second.JoinShared();
+        });
+        second.Connect(delta => secondDelta += delta);
+        try
+        {
+            first.JoinShared();
+            SharedTicker.Dispatch(16);
+            Assert.Equal(16, firstDelta);
+            Assert.Equal(0, secondDelta);
+
+            SharedTicker.Dispatch(16);
+            Assert.Equal(32, firstDelta);
+            Assert.Equal(16, secondDelta);
+        }
+        finally
+        {
+            first.Stop();
+            second.Stop();
+        }
+    }
+
+    [Fact]
+    public void Shared_ticker_does_not_pump_a_clock_that_stopped()
+    {
+        var first = new MotionClock();
+        var second = new MotionClock();
+        var firstDelta = 0d;
+        var secondDelta = 0d;
+        first.Connect(delta =>
+        {
+            firstDelta += delta;
+            second.Stop();
+        });
+        second.Connect(delta => secondDelta += delta);
+        try
+        {
+            first.JoinShared();
+            second.JoinShared();
+            SharedTicker.Dispatch(16);
+            Assert.Equal(16, firstDelta);
+            Assert.Equal(0, secondDelta);
+        }
+        finally
+        {
+            first.Stop();
+            second.Stop();
+        }
+    }
+
     static (MotionPlayer Player, MotionClock Clock, BoxView Box) Play(Motion motion)
     {
         var box = new BoxView();
