@@ -499,10 +499,12 @@ public sealed class Motion
     /// <summary>
     /// Writes <see cref="VisualElement.TranslationXProperty"/> and
     /// <see cref="VisualElement.TranslationYProperty"/> along
-    /// <paramref name="geometry"/>. <paramref name="from"/> / <paramref name="to"/>
-    /// are 0–1 of path length. Stagger delays the start of path <c>t</c>.
+    /// <paramref name="geometry"/>. <paramref name="from"/> and <paramref name="to"/>
+    /// are fractions of the drawn length. Stagger delays the start of path <c>t</c>.
     /// When <paramref name="orient"/> is true, the track also writes
-    /// <see cref="VisualElement.Rotation"/> from the curve direction.
+    /// <see cref="VisualElement.Rotation"/> from the tangent.
+    /// A closed figure adds the edge back to its start when the pen is not already there.
+    /// A later figure jumps, and that gap has no length.
     /// </summary>
     public Motion Path(PathGeometry geometry, double from = 0, double to = 1, bool orient = false)
     {
@@ -516,6 +518,25 @@ public sealed class Motion
             PathTo = to,
             Orient = orient,
         });
+    }
+
+    /// <summary>
+    /// Writes translation along the SVG path <paramref name="data"/>, in the path's
+    /// own coordinates. <paramref name="from"/> and <paramref name="to"/> are fractions
+    /// of the drawn length. <paramref name="orient"/> also writes
+    /// <see cref="VisualElement.Rotation"/> from the tangent.
+    /// <c>M</c> <c>L</c> <c>H</c> <c>V</c> <c>C</c> <c>S</c> <c>Q</c> <c>T</c> <c>A</c>
+    /// <c>Z</c> and the lowercase forms are accepted, including repeated pairs and compact numbers.
+    /// A <c>Z</c> adds the closing edge when the pen is not already on the start.
+    /// A later <c>M</c> jumps, and that gap has no length.
+    /// Invalid markup throws. An empty path does not move the view.
+    /// </summary>
+    public Motion Path(string data, double from = 0, double to = 1, bool orient = false)
+    {
+        ArgumentNullException.ThrowIfNull(data);
+        var geometry = new PathGeometry();
+        PathFigureCollectionConverter.ParseStringToPathFigureCollection(geometry.Figures, data);
+        return Path(geometry, from, to, orient);
     }
 
     /// <summary>
@@ -652,7 +673,7 @@ public sealed class Motion
     /// <see cref="VisualElement.AnchorX"/> and <see cref="VisualElement.AnchorY"/>.
     /// Replaces <see cref="Translate(double, double)"/>, <see cref="Rotate(double)"/>,
     /// <see cref="RotateX(double)"/>, <see cref="RotateY(double)"/>, <see cref="Scale(double)"/>,
-    /// <see cref="Path"/>, and <see cref="Perspective"/> on this recipe.
+    /// <c>Path</c>, and <see cref="Perspective"/> on this recipe.
     /// </summary>
     public Motion Transform(Func<double, Matrix4> onTransform)
     {

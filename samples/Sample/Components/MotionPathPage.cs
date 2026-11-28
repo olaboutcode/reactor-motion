@@ -3,7 +3,7 @@ using Microsoft.Maui.Controls.Shapes;
 namespace Sample.Components;
 
 /// <summary>
-/// Cubic and quadratic curves, an arc, a cornered polyline, a slice of a curve, and a return trip.
+/// Cubic and quadratic curves, an arc, a cornered polyline, a slice of a curve, a return trip, and a closed SVG path.
 /// </summary>
 sealed class MotionPathPage : Component
 {
@@ -15,6 +15,7 @@ sealed class MotionPathPage : Component
         new("Corners", "Straight segments. The bar turns at each corner.", Colors.MediumPurple, Corners(), 180, orient: true, markerWidth: 44, markerHeight: 16, corner: 4),
         new("Middle", "The same cubic, from a quarter of its length to three quarters.", Colors.Coral, Bezier(), 200, from: 0.25, to: 0.75),
         new("Return", "The arc again, walked from the end back to the start.", Colors.OrangeRed, Arc(), 180, from: 1, to: 0, orient: true, markerWidth: 44, markerHeight: 16, corner: 4),
+        new("SVG", "A path string. The loop closes, and the square does not cut across the gap.", Colors.MediumSeaGreen, null, 240, data: "M20,50 C20,-50 180,150 180,50 C180-50 20,150 20,50 Z"),
     ];
 
     protected override void OnWillUnmount()
@@ -36,7 +37,7 @@ sealed class MotionPathPage : Component
                     .GridRow(0),
                 ScrollView(
                     VStack([
-                        Caption("Each marker follows a geometry. A bar also turns to match the tangent."),
+                        Caption("Each marker follows a geometry or a path string. A bar also turns to match the tangent."),
                         .. Examples(),
                     ])
                     .Spacing(16)
@@ -104,8 +105,7 @@ sealed class MotionPathPage : Component
         lane.Player?.Dispose();
         Park(lane.Marker);
         lane.Player = Motion.Bind(
-            Motion.Define(m => m
-                .Path(lane.Geometry, lane.From, lane.To, lane.Orient)
+            Motion.Define(m => Follow(m, lane)
                 .WithDuration(1000)
                 .WithEasing(Easing.SinInOut)),
             lane.Marker);
@@ -128,6 +128,11 @@ sealed class MotionPathPage : Component
         marker.TranslationY = 0;
         marker.Rotation = 0;
     }
+
+    static Motion Follow(Motion motion, Lane lane)
+        => lane.Data is null
+            ? motion.Path(lane.Geometry!, lane.From, lane.To, lane.Orient)
+            : motion.Path(lane.Data, lane.From, lane.To, lane.Orient);
 
     static PathGeometry Bezier()
     {
@@ -187,19 +192,21 @@ sealed class MotionPathPage : Component
         string title,
         string detail,
         Color color,
-        PathGeometry geometry,
+        PathGeometry? geometry,
         double height,
         double from = 0,
         double to = 1,
         bool orient = false,
         double markerWidth = 36,
         double markerHeight = 36,
-        double corner = 18)
+        double corner = 18,
+        string? data = null)
     {
         public string Title { get; } = title;
         public string Detail { get; } = detail;
         public Color Color { get; } = color;
-        public PathGeometry Geometry { get; } = geometry;
+        public PathGeometry? Geometry { get; } = geometry;
+        public string? Data { get; } = data;
         public double Height { get; } = height;
         public double From { get; } = from;
         public double To { get; } = to;

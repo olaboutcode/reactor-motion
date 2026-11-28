@@ -6,25 +6,35 @@ namespace Reactor.Motion.Internals;
 /// <summary>
 /// Arc-length table for a <see cref="Microsoft.Maui.Controls.Shapes.PathGeometry"/>.
 /// Progress maps to distance along the flattened path, so a long segment and a
-/// short one take time in proportion to their length.
+/// short one take time in proportion to their length. A <c>Z</c> adds the closing
+/// edge when the pen is not already on the start. A later figure is a pen lift:
+/// that gap has no length, and the view jumps.
 /// </summary>
 internal sealed class PathSampler
 {
+    /// <summary>A chord within this distance of the curve is flat enough.</summary>
+    const double HalfPoint = 0.5;
+
     readonly Point[] _points;
     readonly double[] _cum;
+    readonly bool[] _lift;
     readonly double _length;
     int _segment = 1;
 
-    PathSampler(Point[] points, double[] cum, double length)
+    PathSampler(Point[] points, double[] cum, bool[] lift, double length)
     {
         _points = points;
         _cum = cum;
+        _lift = lift;
         _length = length;
     }
 
     public static PathSampler? TryCreate(PathGeometry geometry)
     {
-        var points = Flatten(geometry);
+        var points = new List<Point>();
+        var lifts = new List<bool>();
+        foreach (var figure in geometry.Figures)
+            AppendFigure(points, lifts, figure);
         if (points.Count < 2)
             return null;
 
@@ -32,14 +42,15 @@ internal sealed class PathSampler
         var length = 0d;
         for (var i = 1; i < points.Count; i++)
         {
-            length += Distance(points[i - 1], points[i]);
+            if (!lifts[i - 1])
+                length += Distance(points[i - 1], points[i]);
             cum[i] = length;
         }
 
         if (length <= 0)
             return null;
 
-        return new PathSampler([.. points], cum, length);
+        return new PathSampler([.. points], cum, [.. lifts], length);
     }
 
     public Point PointAt(double t)
@@ -67,95 +78,166 @@ internal sealed class PathSampler
         t = double.IsNaN(t) || double.IsInfinity(t) ? 0 : Math.Clamp(t, 0, 1);
         var d = t * _length;
         if (d <= 0)
-            return (_points[0], _points[1], 0);
+            return Start();
         if (d >= _length)
-            return (_points[^2], _points[^1], 1);
+            return End();
 
-        // Playback samples nearby distances, so resume at the last segment.
-        var i = _segment;
-        if ((uint)(i - 1) >= (uint)(_cum.Length - 1))
-            i = 1;
-        if (_cum[i] < d)
-        {
-            while (i < _cum.Length && _cum[i] < d)
-                i++;
-        }
-        else
-        {
-            while (i > 1 && _cum[i - 1] >= d)
-                i--;
-        }
-
+        var i = Resume(d);
+        var span = _cum[i] - _cum[i - 1];
+        var s = span <= 1e-12 ? 0 : (d - _cum[i - 1]) / span;
+        if (s >= 1)
+            i = AfterLift(i, ref s);
         _segment = i;
-        var prev = _cum[i - 1];
-        var span = _cum[i] - prev;
-        var s = span <= 0 ? 1 : (d - prev) / span;
         return (_points[i - 1], _points[i], s);
     }
 
-    static List<Point> Flatten(PathGeometry geometry)
+    int Resume(double d)
     {
-        var points = new List<Point>();
-        foreach (var figure in geometry.Figures)
+        var i = _segment;
+        if ((uint)(i - 1) < (uint)(_cum.Length - 1)
+            && !_lift[i - 1]
+            && _cum[i - 1] <= d
+            && d <= _cum[i])
         {
-            var current = figure.StartPoint;
-            points.Add(current);
-            foreach (var segment in figure.Segments)
-            {
-                switch (segment)
-                {
-                    case LineSegment line:
-                        current = line.Point;
-                        points.Add(current);
-                        break;
-                    case PolyLineSegment poly:
-                        foreach (var point in poly.Points)
-                        {
-                            current = point;
-                            points.Add(current);
-                        }
-                        break;
-                    case BezierSegment cubic:
-                        AddCubic(points, current, cubic.Point1, cubic.Point2, cubic.Point3);
-                        current = cubic.Point3;
-                        break;
-                    case PolyBezierSegment polyCubic:
-                        for (var i = 0; i + 2 < polyCubic.Points.Count; i += 3)
-                        {
-                            AddCubic(points, current, polyCubic.Points[i], polyCubic.Points[i + 1], polyCubic.Points[i + 2]);
-                            current = polyCubic.Points[i + 2];
-                        }
-                        break;
-                    case QuadraticBezierSegment quad:
-                        AddQuad(points, current, quad.Point1, quad.Point2);
-                        current = quad.Point2;
-                        break;
-                    case PolyQuadraticBezierSegment polyQuad:
-                        for (var i = 0; i + 1 < polyQuad.Points.Count; i += 2)
-                        {
-                            AddQuad(points, current, polyQuad.Points[i], polyQuad.Points[i + 1]);
-                            current = polyQuad.Points[i + 1];
-                        }
-                        break;
-                    case ArcSegment arc:
-                        AddArc(points, current, arc);
-                        current = arc.Point;
-                        break;
-                }
-            }
+            return i;
         }
 
-        return points;
+        var lo = 1;
+        var hi = _cum.Length - 1;
+        while (lo < hi)
+        {
+            var mid = (lo + hi) >>> 1;
+            if (_cum[mid] < d)
+                lo = mid + 1;
+            else
+                hi = mid;
+        }
+
+        return lo;
     }
 
-    static void AddArc(List<Point> points, Point start, ArcSegment arc)
+    int AfterLift(int i, ref double s)
+    {
+        if (i >= _lift.Length || !_lift[i])
+            return i;
+
+        var start = i;
+        while (start < _lift.Length && _lift[start])
+            start++;
+        if (start >= _lift.Length)
+            return i;
+
+        s = 0;
+        return start + 1;
+    }
+
+    (Point A, Point B, double S) Start()
+    {
+        for (var i = 1; i < _points.Length; i++)
+        {
+            if (_lift[i - 1] || _cum[i] <= _cum[i - 1])
+                continue;
+            _segment = i;
+            return (_points[i - 1], _points[i], 0);
+        }
+
+        return End();
+    }
+
+    (Point A, Point B, double S) End()
+    {
+        var i = _points.Length - 1;
+        while (i > 1 && (_lift[i - 1] || _cum[i] <= _cum[i - 1]))
+            i--;
+        _segment = i;
+        return (_points[i - 1], _points[i], 1);
+    }
+
+    static void AppendFigure(List<Point> points, List<bool> lifts, PathFigure figure)
+    {
+        var start = figure.StartPoint;
+        if (points.Count > 0)
+            lifts.Add(true);
+        points.Add(start);
+
+        var current = start;
+        foreach (var segment in figure.Segments)
+            current = AppendSegment(points, lifts, current, segment);
+
+        if (!figure.IsClosed || Distance(current, start) <= 1e-4)
+            return;
+
+        lifts.Add(false);
+        points.Add(start);
+    }
+
+    static Point AppendSegment(List<Point> points, List<bool> lifts, Point current, PathSegment segment)
+    {
+        switch (segment)
+        {
+            case LineSegment line:
+                AddLine(points, lifts, line.Point);
+                return line.Point;
+            case PolyLineSegment poly:
+                foreach (var point in poly.Points)
+                    AddLine(points, lifts, point);
+                return poly.Points.Count == 0 ? current : poly.Points[^1];
+            case BezierSegment cubic:
+                AddCubic(points, lifts, current, cubic.Point1, cubic.Point2, cubic.Point3, 0);
+                return cubic.Point3;
+            case PolyBezierSegment polyCubic:
+                return AddPolyCubic(points, lifts, current, polyCubic.Points);
+            case QuadraticBezierSegment quad:
+                AddQuad(points, lifts, current, quad.Point1, quad.Point2, 0);
+                return quad.Point2;
+            case PolyQuadraticBezierSegment polyQuad:
+                return AddPolyQuad(points, lifts, current, polyQuad.Points);
+            case ArcSegment arc:
+                AddArc(points, lifts, current, arc);
+                return arc.Point;
+            default:
+                return current;
+        }
+    }
+
+    static Point AddPolyCubic(List<Point> points, List<bool> lifts, Point current, PointCollection controls)
+    {
+        for (var i = 0; i + 2 < controls.Count; i += 3)
+        {
+            var end = controls[i + 2];
+            AddCubic(points, lifts, current, controls[i], controls[i + 1], end, 0);
+            current = end;
+        }
+
+        return current;
+    }
+
+    static Point AddPolyQuad(List<Point> points, List<bool> lifts, Point current, PointCollection controls)
+    {
+        for (var i = 0; i + 1 < controls.Count; i += 2)
+        {
+            var end = controls[i + 1];
+            AddQuad(points, lifts, current, controls[i], end, 0);
+            current = end;
+        }
+
+        return current;
+    }
+
+    static void AddLine(List<Point> points, List<bool> lifts, Point point)
+    {
+        lifts.Add(false);
+        points.Add(point);
+    }
+
+    static void AddArc(List<Point> points, List<bool> lifts, Point start, ArcSegment arc)
     {
         var end = arc.Point;
         var rx = Math.Abs(arc.Size.Width);
         var ry = Math.Abs(arc.Size.Height);
         if (rx < 1e-6 || ry < 1e-6 || Distance(start, end) < 1e-6)
         {
-            points.Add(end);
+            AddLine(points, lifts, end);
             return;
         }
 
@@ -199,16 +281,36 @@ internal sealed class PathSampler
         if (clockwise && dtheta < 0)
             dtheta += 2 * Math.PI;
 
-        var steps = Math.Max(8, (int)Math.Ceiling(Math.Abs(dtheta) / (Math.PI / 12)));
+        var steps = ArcSteps(Math.Max(rx, ry), dtheta);
         for (var i = 1; i <= steps; i++)
         {
+            if (i == steps)
+            {
+                AddLine(points, lifts, end);
+                return;
+            }
+
             var theta = theta1 + dtheta * (i / (double)steps);
             var x = rx * Math.Cos(theta);
             var y = ry * Math.Sin(theta);
-            points.Add(new Point(
+            AddLine(points, lifts, new Point(
                 cos * x - sin * y + cx,
                 sin * x + cos * y + cy));
         }
+    }
+
+    static int ArcSteps(double radius, double sweep)
+    {
+        var turn = Math.Abs(sweep);
+        if (turn < 1e-6 || radius <= HalfPoint)
+            return 1;
+
+        var cosHalf = Math.Clamp(1 - (HalfPoint / radius), -1, 1);
+        var maxTheta = 2 * Math.Acos(cosHalf);
+        if (maxTheta < 1e-4)
+            maxTheta = 1e-4;
+        var steps = (int)Math.Ceiling(turn / maxTheta);
+        return steps < 1 ? 1 : steps;
     }
 
     static double VectorAngle(double ux, double uy, double vx, double vy)
@@ -222,35 +324,68 @@ internal sealed class PathSampler
         return sign * Math.Acos(c);
     }
 
-    static void AddCubic(List<Point> points, Point p0, Point p1, Point p2, Point p3)
+    static void AddCubic(
+        List<Point> points,
+        List<bool> lifts,
+        Point p0,
+        Point p1,
+        Point p2,
+        Point p3,
+        int depth)
     {
-        for (var i = 1; i <= 16; i++)
-            points.Add(Cubic(p0, p1, p2, p3, i / 16d));
+        if (depth >= 16 || (ChordNear(p1, p0, p3) && ChordNear(p2, p0, p3)))
+        {
+            AddLine(points, lifts, p3);
+            return;
+        }
+
+        var p01 = Mid(p0, p1);
+        var p12 = Mid(p1, p2);
+        var p23 = Mid(p2, p3);
+        var p012 = Mid(p01, p12);
+        var p123 = Mid(p12, p23);
+        var mid = Mid(p012, p123);
+        AddCubic(points, lifts, p0, p01, p012, mid, depth + 1);
+        AddCubic(points, lifts, mid, p123, p23, p3, depth + 1);
     }
 
-    static void AddQuad(List<Point> points, Point p0, Point p1, Point p2)
+    static void AddQuad(List<Point> points, List<bool> lifts, Point p0, Point p1, Point p2, int depth)
     {
-        for (var i = 1; i <= 12; i++)
-            points.Add(Quad(p0, p1, p2, i / 12d));
+        if (depth >= 16 || ChordNear(p1, p0, p2))
+        {
+            AddLine(points, lifts, p2);
+            return;
+        }
+
+        var p01 = Mid(p0, p1);
+        var p12 = Mid(p1, p2);
+        var mid = Mid(p01, p12);
+        AddQuad(points, lifts, p0, p01, mid, depth + 1);
+        AddQuad(points, lifts, mid, p12, p2, depth + 1);
     }
 
-    static Point Cubic(Point p0, Point p1, Point p2, Point p3, double t)
+    static bool ChordNear(Point control, Point start, Point end)
+        => DistanceToChord(control, start, end) <= HalfPoint;
+
+    static double DistanceToChord(Point point, Point start, Point end)
     {
-        var u = 1 - t;
-        var uu = u * u;
-        var tt = t * t;
-        return new Point(
-            uu * u * p0.X + 3 * uu * t * p1.X + 3 * u * tt * p2.X + tt * t * p3.X,
-            uu * u * p0.Y + 3 * uu * t * p1.Y + 3 * u * tt * p2.Y + tt * t * p3.Y);
+        var dx = end.X - start.X;
+        var dy = end.Y - start.Y;
+        var len2 = dx * dx + dy * dy;
+        if (len2 <= 1e-12)
+            return Distance(point, start);
+
+        var t = ((point.X - start.X) * dx + (point.Y - start.Y) * dy) / len2;
+        t = Math.Clamp(t, 0, 1);
+        var x = start.X + t * dx;
+        var y = start.Y + t * dy;
+        var ox = point.X - x;
+        var oy = point.Y - y;
+        return Math.Sqrt(ox * ox + oy * oy);
     }
 
-    static Point Quad(Point p0, Point p1, Point p2, double t)
-    {
-        var u = 1 - t;
-        return new Point(
-            u * u * p0.X + 2 * u * t * p1.X + t * t * p2.X,
-            u * u * p0.Y + 2 * u * t * p1.Y + t * t * p2.Y);
-    }
+    static Point Mid(Point a, Point b)
+        => new((a.X + b.X) / 2, (a.Y + b.Y) / 2);
 
     static double Distance(Point a, Point b)
     {

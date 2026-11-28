@@ -1200,7 +1200,7 @@ m.FadeOut().WithSpring(Spring.Snappy).WithPose()
 
 ### Path
 
-`Path` writes `TranslationX` and `TranslationY` by sampling a `PathGeometry` along its length.
+`Path` writes `TranslationX` and `TranslationY` by sampling a `PathGeometry` or an SVG path string along its drawn length. The translation is in the path's own coordinates, from where the view is laid out.
 
 ```csharp
 static PathGeometry Bezier()
@@ -1220,15 +1220,25 @@ static PathGeometry Bezier()
 Motion.Bind(
     m => m.Path(Bezier()).WithDuration(900).WithEasing(Easing.SinInOut),
     orb);
+
+Marker().BindMotion(m => m
+    .Path("M20,50 C20,-50 180,150 180,50 C180-50 20,150 20,50 Z")
+    .WithDuration(1200)
+    .WithEasing(Easing.Linear));
 ```
 
 | Member | Role |
 |---|---|
-| `Path(PathGeometry geometry, double from = 0, double to = 1, bool orient = false)` | Move along `geometry`. `from` and `to` are fractions of the path length. `orient` also writes `Rotation` from the tangent. |
+| `Path(PathGeometry geometry, double from = 0, double to = 1, bool orient = false)` | Move along `geometry`. `from` and `to` are fractions of the drawn length. `orient` also writes `Rotation` from the tangent. |
+| `Path(string data, double from = 0, double to = 1, bool orient = false)` | Parse `data` once and walk it the same way. |
 
-`from` and `to` are clamped to 0–1. A non-finite `from` becomes 0. A non-finite `to` becomes 1. `geometry` must not be null.
+`from` and `to` are clamped to 0–1. A non-finite `from` becomes 0. A non-finite `to` becomes 1. `geometry` and `data` must not be null.
 
-The sampler flattens lines, polylines, quadratic Béziers, cubic Béziers, and elliptical arcs. A degenerate arc (a radius that collapses) becomes a straight line. The first `Forward` writes the point at `from`. With `orient: true` that same frame writes `Rotation` in clockwise degrees from the positive X axis, matching a Y-down coordinate system. `orient` defaults to false, so an existing path does not start rotating.
+`data` accepts `M` `L` `H` `V` `C` `S` `Q` `T` `A` `Z` and the lowercase forms, repeated coordinate pairs, and compact numbers such as `C180-50`. A `transform`, a `viewBox`, and shape elements such as `circle` and `rect` are not path data. Invalid markup throws when the recipe is built. An empty path does not move the view.
+
+A `Z` adds the closing edge when the pen is not already on the start, and adds nothing when it is. A later `M` lifts the pen. That gap has no length, and the view jumps to the next figure. It does not travel the straight line between them. The geometry overload uses that same walk. A closed `PathFigure` is the `Z`.
+
+The sampler flattens lines, polylines, quadratic Béziers, cubic Béziers, and elliptical arcs once, when the player is created. A curve splits until the chord sits within half a point of the curve, so a long bend stays smooth and a nearly straight cubic stays short. Playback resumes at the last segment. A seek reads the length table directly. A degenerate arc (a radius that collapses) becomes a straight line. The first `Forward` writes the point at `from`. With `orient: true` that same frame writes `Rotation` in clockwise degrees from the positive X axis, matching a Y-down coordinate system. `orient` defaults to false, so an existing path does not start rotating.
 
 Stagger delays when each target starts walking the path. Keyframes along a path are a sequence of `Then` segments, each with its own geometry.
 
@@ -1267,7 +1277,7 @@ A posed replacement still receives the spring speed of the properties it takes. 
 
 ## Samples
 
-`samples/Sample` is a MauiReactor gallery. Home lists the playground, stagger, scrub, color spaces, timeline, stages, path, matrix, enter / exit, in view, poses, press, drag, pinch, layout, and collection. The playground includes slide out, scale out, width, and corner radius alongside the fades, springs, and keyframes. Stagger can start from the start, the center, or the end of the grid. Scrub seeks a scale and a turn, and a cubic path, from sliders. Scrolling that page fades a card over the first 180px and tracks a second card as it crosses the viewport. Color compares HSV, RGB, and three HSV stops. The timeline page plays a sequence with seek, an overlap, a beat name that changes when the beat starts, a box and an image on one timeline, a hold, a yoyo, a repeat, a beat that plays twice before the fade, a stagger, and a spring. On the stages page, a card waits, then slides out and back twice, and the label names each callback: Forward, Reversing, Repeat, and Reverse completed. A second card fades twice and the label reads Forward, Repeat, and Completed. Pressing a third card says Forward, then Reversing, then Reverse completed. Path plays a cubic Bézier, a tangent-following arc, a quadratic hop, a cornered polyline, a slice of the cubic, and the arc walked backward. Matrix plays a turn, a tilt, and a flip. Enter / exit shows a slide and a scale. In view fades and slides two cards in after they scroll halfway onto the page. Scroll marks fill the space above each card. The green card plays once. The coral card plays again each time it scrolls back in. On the poses page, Play springs two cards toward an outline. Halfway, Pose comes back from the live position and keeps the spring speed. Snap jumps onto the outline, then comes back. On the press page, one card springs smaller while the pointer is down. Another grows under a mouse or trackpad. A finger on a phone only presses that card. On the drag page, a card snaps into the nearer of two pockets. Another stays left of a bar: a flick reaches the far pocket, and a slow release springs back. A third has three pockets: a flick from the left reaches the middle, and a slow release takes the nearest. A fourth glides to a stop inside an open field. A fifth snaps to a corner of a board. A sixth stays in place and grows, then settles small or large. Each one keeps the speed of the release. On the pinch page, two fingers grow a card and turn it, and letting go leaves that pose. On the layout page, opening a session reveals the new height from the old one, and everything under those notes springs from where it was. Closing plays a height exit on the notes, so the session shrinks closed. On the collection page, adding, removing, or moving an item plays the move on the items that stay. A removed item fades where it left. The items sit in a vertical stack.
+`samples/Sample` is a MauiReactor gallery. Home lists the playground, stagger, scrub, color spaces, timeline, stages, path, matrix, enter / exit, in view, poses, press, drag, pinch, layout, and collection. The playground includes slide out, scale out, width, and corner radius alongside the fades, springs, and keyframes. Stagger can start from the start, the center, or the end of the grid. Scrub seeks a scale and a turn, and a cubic path, from sliders. Scrolling that page fades a card over the first 180px and tracks a second card as it crosses the viewport. Color compares HSV, RGB, and three HSV stops. The timeline page plays a sequence with seek, an overlap, a beat name that changes when the beat starts, a box and an image on one timeline, a hold, a yoyo, a repeat, a beat that plays twice before the fade, a stagger, and a spring. On the stages page, a card waits, then slides out and back twice, and the label names each callback: Forward, Reversing, Repeat, and Reverse completed. A second card fades twice and the label reads Forward, Repeat, and Completed. Pressing a third card says Forward, then Reversing, then Reverse completed. Path plays a cubic Bézier, a tangent-following arc, a quadratic hop, a cornered polyline, a slice of the cubic, the arc walked backward, and a closed SVG path string. Matrix plays a turn, a tilt, and a flip. Enter / exit shows a slide and a scale. In view fades and slides two cards in after they scroll halfway onto the page. Scroll marks fill the space above each card. The green card plays once. The coral card plays again each time it scrolls back in. On the poses page, Play springs two cards toward an outline. Halfway, Pose comes back from the live position and keeps the spring speed. Snap jumps onto the outline, then comes back. On the press page, one card springs smaller while the pointer is down. Another grows under a mouse or trackpad. A finger on a phone only presses that card. On the drag page, a card snaps into the nearer of two pockets. Another stays left of a bar: a flick reaches the far pocket, and a slow release springs back. A third has three pockets: a flick from the left reaches the middle, and a slow release takes the nearest. A fourth glides to a stop inside an open field. A fifth snaps to a corner of a board. A sixth stays in place and grows, then settles small or large. Each one keeps the speed of the release. On the pinch page, two fingers grow a card and turn it, and letting go leaves that pose. On the layout page, opening a session reveals the new height from the old one, and everything under those notes springs from where it was. Closing plays a height exit on the notes, so the session shrinks closed. On the collection page, adding, removing, or moving an item plays the move on the items that stay. A removed item fades where it left. The items sit in a vertical stack.
 
 ## Building
 
