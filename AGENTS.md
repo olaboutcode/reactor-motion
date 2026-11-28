@@ -65,7 +65,7 @@ One player owns each property it writes. A later player takes only the propertie
 
 `Add` places a beat at an absolute time from the timeline start. `Then` offset is milliseconds from the previous beat's end. A positive offset waits. A negative offset overlaps. The start clamps at 0.
 
-`OnBeat` runs when forward playback reaches that named beat, including each later repeat. It does not run during the timeline delay, on seek, or on reverse. `MotionPlayer.At` stays the 0–1 listener.
+`OnBeat` runs when forward playback reaches that named beat, including each later repeat. It does not run during the timeline delay, on seek, or on reverse. `MotionPlayer.At` stays the 0–1 listener. `OnBegin` runs when `Delay` has elapsed and a forward leaves the start. `OnReverseStart` runs when a reverse leg begins, including a press release and a yoyo at the far end. `OnRepeat` runs when another cycle starts, not on the first play, and not for a beat's own `Repeat`. `OnComplete` runs when the run will not continue, including a drag release that rests and a reduce-motion forward. `OnReverseComplete` runs when a reverse arrives at the from pose and will not start another forward. Seek, `Reset`, pinch, and scrub do not run them.
 
 Tests that step time use `new MotionClock(manual: true)` and `Tick`. Do not sleep.
 

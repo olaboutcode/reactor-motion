@@ -25,6 +25,8 @@ public sealed class MotionPlayer : IDisposable
     int _repeatRemaining;
     double _beatMark = -1;
     bool _autoRepeat = true;
+    bool _beginArmed;
+    bool _recipeHooks = true;
     double _x;
     double _v;
     double _springElapsedMs;
@@ -280,6 +282,7 @@ public sealed class MotionPlayer : IDisposable
         CancelPending();
         _elapsedMs = 0;
         _holdMs = 0;
+        _beginArmed = false;
         _gestureSpring = null;
         _coast = false;
         _springTarget = double.NaN;
@@ -458,6 +461,8 @@ public sealed class MotionPlayer : IDisposable
         }
 
         CompletePending();
+        if (_recipeHooks)
+            InvokeHook(Motion.CompleteHook);
     }
 
     /// <summary>
@@ -533,37 +538,48 @@ public sealed class MotionPlayer : IDisposable
         }
 
         CompletePending();
+        if (_recipeHooks)
+            InvokeHook(Motion.CompleteHook);
     }
 
     void SeekLinear(double u)
     {
         u = double.IsNaN(u) || double.IsInfinity(u) ? 0 : Math.Clamp(u, 0, 1);
-        _coast = false;
-        _springTarget = double.NaN;
-        _parkedStop = null;
-        _gestureSpring = null;
-        _autoRepeat = false;
-        _clock.Stop();
-        _holdMs = 0;
-        _elapsedMs = u * Duration;
-        ResetSpring(u);
-        ParkTrackSprings();
-        Apply(u);
-
-        if (u >= 1)
+        _recipeHooks = false;
+        _beginArmed = false;
+        try
         {
-            FinishForward();
-            return;
-        }
+            _coast = false;
+            _springTarget = double.NaN;
+            _parkedStop = null;
+            _gestureSpring = null;
+            _autoRepeat = false;
+            _clock.Stop();
+            _holdMs = 0;
+            _elapsedMs = u * Duration;
+            ResetSpring(u);
+            ParkTrackSprings();
+            Apply(u);
 
-        if (u <= 0)
+            if (u >= 1)
+            {
+                FinishForward();
+                return;
+            }
+
+            if (u <= 0)
+            {
+                FinishReverse(cancelPending: true);
+                return;
+            }
+
+            PauseForSeek();
+            ReportProgress();
+        }
+        finally
         {
-            FinishReverse(cancelPending: true);
-            return;
+            _recipeHooks = true;
         }
-
-        PauseForSeek();
-        ReportProgress();
     }
 
     void PauseForSeek()
@@ -705,6 +721,9 @@ public sealed class MotionPlayer : IDisposable
         if (running == MotionPlaybackStatus.Forward)
             _beatMark = _elapsedMs <= 0 ? -1 : LinearU;
 
+        var resumeSame = !recapture
+            && Status == MotionPlaybackStatus.Paused
+            && _pausedWas == running;
         _pending = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
         var task = _pending.Task;
         ArmToken(cancellationToken);
@@ -712,6 +731,8 @@ public sealed class MotionPlayer : IDisposable
         _runArgs = NewArgs();
         if (fireStarted)
             Raise(Started);
+        if (!cancellationToken.IsCancellationRequested)
+            NotifyLegStart(running, recapture, resumeSame);
         Apply(PlaybackU);
         ReportProgress();
 
@@ -721,26 +742,50 @@ public sealed class MotionPlayer : IDisposable
             return task;
         }
 
-        if (Reducing)
+        if (Reducing || (Duration == 0 && Motion.Spring is null && !_hasTrackSprings && _holdMs <= 0))
         {
-            if (_direction > 0)
-                FinishForward();
-            else
-                FinishReverse(cancelPending: false);
-            return task;
-        }
-
-        if (Duration == 0 && Motion.Spring is null && !_hasTrackSprings && _holdMs <= 0)
-        {
-            if (_direction > 0)
-                FinishForward();
-            else
-                FinishReverse(cancelPending: false);
+            FinishInDirection();
             return task;
         }
 
         StartClock();
         return task;
+    }
+
+    // A new forward arms OnBegin and runs it when Delay is already over.
+    // A new reverse runs OnReverseStart now. Resuming the same leg does neither.
+    void NotifyLegStart(MotionPlaybackStatus running, bool recapture, bool resumeSame)
+    {
+        if (running == MotionPlaybackStatus.Reverse)
+        {
+            _beginArmed = false;
+            if (!resumeSame)
+                InvokeHook(Motion.ReverseStartHook);
+            return;
+        }
+
+        if (resumeSame)
+        {
+            if (_beginArmed && _holdMs <= 0)
+                ReleaseBegin();
+            return;
+        }
+
+        if (running != MotionPlaybackStatus.Forward || !recapture)
+            return;
+
+        _beginArmed = true;
+        if (Reducing || _holdMs <= 0)
+            ReleaseBegin();
+    }
+
+    void ReleaseBegin()
+    {
+        if (!_beginArmed)
+            return;
+
+        _beginArmed = false;
+        InvokeHook(Motion.BeginHook);
     }
 
     void StartClock()
@@ -811,6 +856,8 @@ public sealed class MotionPlayer : IDisposable
 
         if (!ConsumeHold(ref deltaMs))
             return;
+
+        ReleaseBegin();
 
         if (_gestureSpring is { } gesture)
         {
@@ -1032,10 +1079,13 @@ public sealed class MotionPlayer : IDisposable
         if (_autoRepeat && !Reducing && TryContinueAfterForward())
             return;
         CompletePending();
+        if (_recipeHooks)
+            InvokeHook(Motion.CompleteHook);
     }
 
     void FinishReverse(bool cancelPending)
     {
+        var gestureRest = _gestureSpring is not null || _coast;
         _clock.Stop();
         _gestureSpring = null;
         _springTarget = double.NaN;
@@ -1050,9 +1100,17 @@ public sealed class MotionPlayer : IDisposable
         if (!cancelPending && _autoRepeat && !Reducing && TryContinueAfterReverse())
             return;
         if (cancelPending)
+        {
             CancelPending();
-        else
-            CompletePending();
+            return;
+        }
+
+        CompletePending();
+        if (!_recipeHooks)
+            return;
+
+        // A drag that springs back to the from pose still finished its release.
+        InvokeHook(gestureRest ? Motion.CompleteHook : Motion.ReverseCompleteHook);
     }
 
     bool TryContinueAfterForward()
@@ -1104,6 +1162,7 @@ public sealed class MotionPlayer : IDisposable
         SetStatus(MotionPlaybackStatus.Forward);
         _runArgs = NewArgs();
         Raise(Started);
+        InvokeHook(Motion.RepeatHook);
         Apply(0);
         ReportProgress();
         StartClock();
@@ -1119,6 +1178,7 @@ public sealed class MotionPlayer : IDisposable
         SetStatus(MotionPlaybackStatus.Reverse);
         _runArgs = NewArgs();
         Raise(Started);
+        InvokeHook(Motion.ReverseStartHook);
         Apply(1);
         ReportProgress();
         StartClock();
@@ -1200,10 +1260,16 @@ public sealed class MotionPlayer : IDisposable
     }
 
     static void InvokeBeat(Action enter)
+        => InvokeHook(enter);
+
+    static void InvokeHook(Action? hook)
     {
+        if (hook is null)
+            return;
+
         try
         {
-            enter();
+            hook();
         }
         catch (Exception ex)
         {

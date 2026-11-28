@@ -52,6 +52,11 @@ public sealed class Motion
     readonly IReadOnlyList<TimelineBeat> _beats;
     readonly uint? _loopStart;
     readonly uint _loopLength;
+    readonly Action? _onBegin;
+    readonly Action? _onReverseStart;
+    readonly Action? _onRepeat;
+    readonly Action? _onComplete;
+    readonly Action? _onReverseComplete;
 
     Motion(
         uint duration,
@@ -76,7 +81,12 @@ public sealed class Motion
         bool place = false,
         uint? beatDuration = null,
         uint? loopStart = null,
-        uint loopLength = 0)
+        uint loopLength = 0,
+        Action? onBegin = null,
+        Action? onReverseStart = null,
+        Action? onRepeat = null,
+        Action? onComplete = null,
+        Action? onReverseComplete = null)
     {
         Duration = duration;
         Easing = easing;
@@ -95,6 +105,11 @@ public sealed class Motion
         _beats = beats ?? [];
         _loopStart = loopStart;
         _loopLength = loopLength;
+        _onBegin = onBegin;
+        _onReverseStart = onReverseStart;
+        _onRepeat = onRepeat;
+        _onComplete = onComplete;
+        _onReverseComplete = onReverseComplete;
         Rate = rate;
         SpringVelocity = springVelocity;
         ReduceMotion = reduceMotion;
@@ -126,6 +141,16 @@ public sealed class Motion
     internal int RepeatCount => _repeat;
 
     internal bool YoyoEnabled => _yoyo;
+
+    internal Action? BeginHook => _onBegin;
+
+    internal Action? ReverseStartHook => _onReverseStart;
+
+    internal Action? RepeatHook => _onRepeat;
+
+    internal Action? CompleteHook => _onComplete;
+
+    internal Action? ReverseCompleteHook => _onReverseComplete;
 
     /// <summary>
     /// Window of the earliest beat that repeats forever, in milliseconds on this recipe.
@@ -914,6 +939,66 @@ public sealed class Motion
     }
 
     /// <summary>
+    /// Runs <paramref name="begin"/> when <see cref="Delay"/> has elapsed and a forward
+    /// run leaves the start. With no delay, that is during the call that starts the run.
+    /// A tick that only finishes the wait does not run it. Seek, a reverse, and each
+    /// later cycle do not. A forward after <see cref="MotionPlayer.Reset"/> runs it again.
+    /// The latest call wins.
+    /// </summary>
+    public Motion OnBegin(Action begin)
+    {
+        ArgumentNullException.ThrowIfNull(begin);
+        return Copy(onBegin: begin, setOnBegin: true);
+    }
+
+    /// <summary>
+    /// Runs <paramref name="reverseStart"/> when a reverse leg begins.
+    /// <see cref="Delay"/> does not hold a reverse. A yoyo runs this at the far end,
+    /// where <see cref="OnComplete"/> does not. Seek does not. The latest call wins.
+    /// </summary>
+    public Motion OnReverseStart(Action reverseStart)
+    {
+        ArgumentNullException.ThrowIfNull(reverseStart);
+        return Copy(onReverseStart: reverseStart, setOnReverseStart: true);
+    }
+
+    /// <summary>
+    /// Runs <paramref name="repeat"/> when a repeat is consumed and another cycle starts.
+    /// The first play does not run it. <c>Repeat(-1)</c> runs it every cycle.
+    /// A <see cref="Repeat(int)"/> on a beat passed to <see cref="Add(Motion, uint, string?, int?)"/>
+    /// or <see cref="Then(Motion, string?, int?, int)"/> does not run this callback.
+    /// Put it on the recipe that plays. The latest call wins.
+    /// </summary>
+    public Motion OnRepeat(Action repeat)
+    {
+        ArgumentNullException.ThrowIfNull(repeat);
+        return Copy(onRepeat: repeat, setOnRepeat: true);
+    }
+
+    /// <summary>
+    /// Runs <paramref name="complete"/> when no further leg will run, the same moment
+    /// the forward task completes. A yoyo does not run this at the far end. Seek does not.
+    /// Reduce motion does, because that play is finished. A drag runs this when the
+    /// release spring rests. The latest call wins.
+    /// </summary>
+    public Motion OnComplete(Action complete)
+    {
+        ArgumentNullException.ThrowIfNull(complete);
+        return Copy(onComplete: complete, setOnComplete: true);
+    }
+
+    /// <summary>
+    /// Runs <paramref name="reverseComplete"/> when a reverse arrives at the from pose
+    /// and will not start another forward. <see cref="MotionPlayer.Reset"/> and a seek
+    /// to 0 do not. Reduce motion runs this for a reverse. The latest call wins.
+    /// </summary>
+    public Motion OnReverseComplete(Action reverseComplete)
+    {
+        ArgumentNullException.ThrowIfNull(reverseComplete);
+        return Copy(onReverseComplete: reverseComplete, setOnReverseComplete: true);
+    }
+
+    /// <summary>
     /// Runs <paramref name="enter"/> when forward playback reaches the beat named
     /// <paramref name="id"/>, including each later repeat. Seek and reverse do not run it.
     /// <see cref="MotionPlayer.At"/> stays the 0–1 listener. A missing id is ignored.
@@ -992,7 +1077,12 @@ public sealed class Motion
             pose: _pose || other._pose,
             place: _place || other._place,
             loopStart: loopStart,
-            loopLength: loopLength);
+            loopLength: loopLength,
+            onBegin: other._onBegin ?? _onBegin,
+            onReverseStart: other._onReverseStart ?? _onReverseStart,
+            onRepeat: other._onRepeat ?? _onRepeat,
+            onComplete: other._onComplete ?? _onComplete,
+            onReverseComplete: other._onReverseComplete ?? _onReverseComplete);
     }
 
     static uint? ShiftedLoop(Motion motion, uint delay, out uint length)
@@ -1430,7 +1520,17 @@ public sealed class Motion
         bool setBeatDuration = false,
         uint? loopStart = null,
         uint loopLength = 0,
-        bool setLoop = false)
+        bool setLoop = false,
+        Action? onBegin = null,
+        bool setOnBegin = false,
+        Action? onReverseStart = null,
+        bool setOnReverseStart = false,
+        Action? onRepeat = null,
+        bool setOnRepeat = false,
+        Action? onComplete = null,
+        bool setOnComplete = false,
+        Action? onReverseComplete = null,
+        bool setOnReverseComplete = false)
         => new(
             duration ?? Duration,
             easing ?? Easing,
@@ -1454,7 +1554,12 @@ public sealed class Motion
             place ?? _place,
             setBeatDuration ? beatDuration : _beatDuration,
             setLoop ? loopStart : _loopStart,
-            setLoop ? loopLength : _loopLength);
+            setLoop ? loopLength : _loopLength,
+            setOnBegin ? onBegin : _onBegin,
+            setOnReverseStart ? onReverseStart : _onReverseStart,
+            setOnRepeat ? onRepeat : _onRepeat,
+            setOnComplete ? onComplete : _onComplete,
+            setOnReverseComplete ? onReverseComplete : _onReverseComplete);
 
     static double SanitizeVelocity(double velocity)
         => double.IsNaN(velocity) || double.IsInfinity(velocity) ? 0 : velocity;

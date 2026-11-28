@@ -44,6 +44,7 @@ In-page view motion for [MauiReactor](https://github.com/adospace/reactorui-maui
     - [Pause resume and reset](#pause-resume-and-reset)
     - [Status](#status)
     - [Player events](#player-events)
+    - [Recipe callbacks](#recipe-callbacks)
   - [Seek](#seek)
   - [Drag](#drag)
   - [Pinch](#pinch)
@@ -524,7 +525,7 @@ Card()
     .Scrub(m => m.Opacity(1, 0).TranslateY(0, -40));
 ```
 
-0 is when the child's leading edge meets the far side of the viewport. 1 is when the trailing edge has left the near side. Values outside that crossing clamp. The axis is vertical when the content is taller than the viewport, or when both axes overflow. It is horizontal only when the content is wider and not taller. Each scroll seeks. `Repeat` and `Yoyo` do not advance, because the clock does not run.
+0 is when the child's leading edge meets the far side of the viewport. 1 is when the trailing edge has left the near side. Values outside that crossing clamp. The axis is vertical when the content is taller than the viewport, or when both axes overflow. It is horizontal only when the content is wider and not taller. Each scroll seeks. `Repeat` and `Yoyo` do not advance, because the clock does not run. A seek does not run the recipe callbacks.
 
 The child sits inside that `ScrollView`. A header that is a sibling of the scroller is outside this walk. With no `ScrollView` ancestor, the seek stays at 0. On load the from pose is written, until the first measurement supplies a progress.
 
@@ -751,6 +752,34 @@ player.StatusChanged += (_, e) => { };
 
 `e.Motion` is the recipe. `e.Targets` is the bound views.
 
+### Recipe callbacks
+
+These live on the recipe, so a page that uses `BindMotion`, `EnterExit`, `InView`, `Press`, `Layout`, or `Drag` does not need the player. The latest call for each one wins. `Copy` keeps a callback you do not replace. `And` keeps the right-hand callback when that side set one. A callback on a beat passed to `Add` or `Then` is not the timeline callback. Put it on the recipe that plays. A callback that throws is logged and skipped.
+
+```csharp
+Card().BindMotion(m => m
+    .FadeIn()
+    .SlideIn(SlideFrom.Bottom, 24)
+    .WithDuration(420)
+    .Repeat(2)
+    .Yoyo()
+    .OnBegin(() => { })
+    .OnReverseStart(() => { })
+    .OnRepeat(() => { })
+    .OnComplete(() => { })
+    .OnReverseComplete(() => { }));
+```
+
+| Member | When |
+|---|---|
+| `OnBegin(Action begin)` | `Delay` has elapsed and a forward leaves the start. With no delay, that is during the call that starts the run. The tick that only finishes the wait does not run it. Seek, a reverse, and each later cycle do not. A forward after `Reset` runs it again. |
+| `OnReverseStart(Action reverseStart)` | A reverse leg begins. `Delay` does not hold a reverse. Press runs this on release. A yoyo runs it at the far end, where `OnComplete` does not. |
+| `OnRepeat(Action repeat)` | A repeat is consumed and another cycle starts. The first play does not run it. `Repeat(-1)` runs it every cycle and never runs `OnComplete`. A beat's own `Repeat` does not run the timeline callback. |
+| `OnComplete(Action complete)` | No further leg will run, the same moment the forward task completes. A yoyo does not run it at the far end. Reduce motion runs it, because that play is finished. A drag runs it when the release spring rests. |
+| `OnReverseComplete(Action reverseComplete)` | A reverse arrives at the from pose and will not start another forward. `Reset` and a seek to 0 do not. Reduce motion runs it for a reverse. |
+
+`At` stays the 0–1 listener, including seek and a decreasing value. `OnBeat` stays the named beat. `Started` still fires when a leg begins, including while a delay is holding. `Completed` still fires at the end of each forward pass, before a yoyo turns around. Seek, pinch, and scrub do not run these callbacks. Enter and exit are separate plays. An exit with `Repeat(-1)` never runs `OnComplete`, so the child stays. The first layout records the origin and does not play.
+
 ### Seek
 
 Seeking parks the player. It does not start playback, and it does not continue a `Repeat` or `Yoyo`. Lifting a slider does not play. Call `Forward` when you want the rest of the clip.
@@ -811,7 +840,7 @@ drag.Release(velocityX: 2, velocityY: -1);
 
 `SpringToNearest` reads `Progress` and the axis stops. Omit the stops and they are 0 and 1, so progress at or above 0.5 targets 1. With more stops, a release slower than 2 targets the nearest stop. The same distance picks the higher stop. A release faster than 2 toward a neighbor targets that neighbor. Positive velocity moves toward 1. The first frames still move with that speed. `NaN` and infinities count as 0. Stops outside 0–1 clamp. Duplicate stops collapse. Fewer than two distinct stops means 0 and 1. Delay, repeat, and yoyo on the recipe do not continue the settle. `Seek` and finish still leave velocity at 0. The drag measures its own speed and passes it in. A canceled pan passes 0, so that release uses the nearest stop.
 
-`WithReduceMotion(true)` jumps to the chosen stop. When the stops are only the ends, that is the end. Releasing when progress is already 0 or 1 finishes that axis immediately.
+`WithReduceMotion(true)` jumps to the chosen stop. When the stops are only the ends, that is the end. Releasing when progress is already 0 or 1 finishes that axis immediately. The release runs `OnComplete` when the spring rests, including a stop between the ends. A coast runs `OnComplete` when it comes to rest. Seeking under the finger does not run the recipe callbacks.
 
 `Coast` keeps the speed and rests where it dies, inside the authored span. Letting go in the middle of a lane can stop in the middle. A flick that reaches an end stops on that end. The card does not travel past the lane. Stops belong to `Release`. The release spring's damping is the friction. Stiffness does not pull toward 0 or 1. `NaN` and infinities count as 0. Delay, repeat, and yoyo do not continue the coast. `Seek` still clamps to 0–1. `WithReduceMotion(true)` stops at the current progress. A canceled pan passes 0, so the card stays where the finger left it.
 
@@ -840,7 +869,7 @@ Lifting the finger releases with the sampled speed of each axis. A canceled pan 
 
 ### Pinch
 
-`Pinch` seeks while two fingers move. The scale recipe follows the span. The rotate recipe follows the angle when you pass one. Omit rotate and the view does not turn. Progress 0 is the from pose and 1 is the to pose. Release leaves that progress. There is no snap. A canceled pinch returns to the progress where the gesture began. Reduce motion stays at the from pose.
+`Pinch` seeks while two fingers move. The scale recipe follows the span. The rotate recipe follows the angle when you pass one. Omit rotate and the view does not turn. Progress 0 is the from pose and 1 is the to pose. Release leaves that progress. There is no snap. The gesture only seeks, so the recipe callbacks do not run. A canceled pinch returns to the progress where the gesture began. Reduce motion stays at the from pose.
 
 The finger ratio is the current span divided by the span at the start of the gesture. That ratio multiplies the scale at the start. The product is placed between the recipe's from and to. A wider span moves toward the larger scale. With `Scale(1, 2.5)` that larger scale is progress 1. The turn adds the finger angle, in degrees, to the rotation at the start. Positive is clockwise, the same direction as `Rotate`. Both results clamp to the recipe.
 
@@ -865,7 +894,7 @@ Card()
     .Press(m => m.Scale(1, 0.96).WithSpring(Spring.Snappy));
 ```
 
-The pointer down plays that recipe forward. The pointer up reverses it, the same way an interrupted exit reverses. A second press during the reverse continues that run from the live value. The recipe is posed, so a forward that starts fresh reads the live value instead of jumping to the authored from. Reduce motion finishes the run.
+The pointer down plays that recipe forward. The pointer up reverses it, the same way an interrupted exit reverses. Pointer down runs `OnBegin` once any delay has elapsed. Pointer up runs `OnReverseStart`, then `OnReverseComplete` when that reverse arrives and will not play forward again. A second press during the reverse continues that run from the live value and does not run `OnBegin` again. The recipe is posed, so a forward that starts fresh reads the live value instead of jumping to the authored from. Reduce motion finishes the run.
 
 Hover is a second recipe. It plays on pointer enter and reverses on pointer exit. Pass nothing and there is no hover. A finger on a phone does not enter or exit, so that hover stays quiet. Press still runs from touch down and up. A mouse, a trackpad, and a stylus hover do raise those events.
 
@@ -898,7 +927,7 @@ m.Rotate(0, 180).Yoyo()
 
 The player continues by itself. It does not recapture `from` between cycles. The `Task` from `ForwardAsync` stays pending until the last cycle. `Pause` leaves that task pending. `Reset`, `Dispose`, and a canceled token cancel it, and the extension finishes without throwing.
 
-`Completed` fires at the end of each forward pass. `Started` fires again for the next leg.
+`Completed` fires at the end of each forward pass. `Started` fires again for the next leg. `OnRepeat` runs when that next cycle starts. `OnComplete` runs when the forward task completes, which is later than `Completed` when a yoyo or another repeat continues. See [Recipe callbacks](#recipe-callbacks).
 
 `And` keeps the right-hand repeat when it is not `1`, otherwise the left-hand repeat. Yoyo is on if either side is on.
 
@@ -929,6 +958,7 @@ var both = enter.And(grow);   // 400 ms. Fade occupies the first 280.
 | Perspective | The right-hand entry, when it has one. Otherwise the left. |
 | Named spans | Both, shifted into the parent. `And` does not assign new ids. |
 | Delay | Baked into each side's windows. The result delay is 0. |
+| Callbacks | The right-hand callback when that side set one. Otherwise the left. |
 
 `And` does not take a name. Use `Add` when the child needs an id.
 
@@ -942,7 +972,7 @@ Motion.Play(
     card);
 ```
 
-A 400 ms fade with a 700 ms delay reports player duration 400. `ForwardAsync` completes after 1100 ms. During the first 700 ms progress stays 0. The first forward still writes `from` immediately, then holds it.
+A 400 ms fade with a 700 ms delay reports player duration 400. `ForwardAsync` completes after 1100 ms. During the first 700 ms progress stays 0. The first forward still writes `from` immediately, then holds it. `OnBegin` runs on the later tick that moves the tracks. The tick that only finishes the wait does not run it.
 
 The hold runs once, on a forward that starts from the dismissed pose. Repeat and yoyo do not play it again. `Reset` arms it again. `Seek` is a position on the track clock. A seek during the hold drops the rest of the wait, and the next `Forward` continues from that seek.
 
@@ -1110,7 +1140,7 @@ Children are flattened immediately. Their tracks are shifted in milliseconds and
 
 `id` records a named window as a fraction of the parent length. Duplicate ids keep the last one. `Seek(id)` and `TrySpan` read those windows. See [Seek](#seek).
 
-`OnBeat` runs when forward playback reaches that named beat, including each later repeat. It does not run during a timeline delay, on seek, or on the way back. `MotionPlayer.At` still listens to the whole player progress.
+`OnBeat` runs when forward playback reaches that named beat, including each later repeat. It does not run during a timeline delay, on seek, or on the way back. `MotionPlayer.At` still listens to the whole player progress. Callbacks for the whole run are [recipe callbacks](#recipe-callbacks). A `Repeat` on a beat does not run the timeline's `OnRepeat`.
 
 ```csharp
 Motion.Timeline(duration: 320, easing: Easing.CubicOut)
@@ -1237,7 +1267,7 @@ A posed replacement still receives the spring speed of the properties it takes. 
 
 ## Samples
 
-`samples/Sample` is a MauiReactor gallery. Home lists the playground, stagger, scrub, color spaces, timeline, path, matrix, enter / exit, in view, poses, press, drag, pinch, layout, and collection. The playground includes slide out, scale out, width, and corner radius alongside the fades, springs, and keyframes. Stagger can start from the start, the center, or the end of the grid. Scrub seeks a scale and a turn, and a cubic path, from sliders. Scrolling that page fades a card over the first 180px and tracks a second card as it crosses the viewport. Color compares HSV, RGB, and three HSV stops. The timeline page plays a sequence with seek, an overlap, a beat name that changes when the beat starts, a box and an image on one timeline, a hold, a yoyo, a repeat, a beat that plays twice before the fade, a stagger, and a spring. Path plays a cubic Bézier, a tangent-following arc, a quadratic hop, a cornered polyline, a slice of the cubic, and the arc walked backward. Matrix plays a turn, a tilt, and a flip. Enter / exit shows a slide and a scale. In view fades and slides two cards in after they scroll halfway onto the page. Scroll marks fill the space above each card. The green card plays once. The coral card plays again each time it scrolls back in. On the poses page, Play springs two cards toward an outline. Halfway, Pose comes back from the live position and keeps the spring speed. Snap jumps onto the outline, then comes back. On the press page, one card springs smaller while the pointer is down. Another grows under a mouse or trackpad. A finger on a phone only presses that card. On the drag page, a card snaps into the nearer of two pockets. Another stays left of a bar: a flick reaches the far pocket, and a slow release springs back. A third has three pockets: a flick from the left reaches the middle, and a slow release takes the nearest. A fourth glides to a stop inside an open field. A fifth snaps to a corner of a board. A sixth stays in place and grows, then settles small or large. Each one keeps the speed of the release. On the pinch page, two fingers grow a card and turn it, and letting go leaves that pose. On the layout page, opening a session reveals the new height from the old one, and everything under those notes springs from where it was. Closing plays a height exit on the notes, so the session shrinks closed. On the collection page, adding, removing, or moving an item plays the move on the items that stay. A removed item fades where it left. The items sit in a vertical stack.
+`samples/Sample` is a MauiReactor gallery. Home lists the playground, stagger, scrub, color spaces, timeline, stages, path, matrix, enter / exit, in view, poses, press, drag, pinch, layout, and collection. The playground includes slide out, scale out, width, and corner radius alongside the fades, springs, and keyframes. Stagger can start from the start, the center, or the end of the grid. Scrub seeks a scale and a turn, and a cubic path, from sliders. Scrolling that page fades a card over the first 180px and tracks a second card as it crosses the viewport. Color compares HSV, RGB, and three HSV stops. The timeline page plays a sequence with seek, an overlap, a beat name that changes when the beat starts, a box and an image on one timeline, a hold, a yoyo, a repeat, a beat that plays twice before the fade, a stagger, and a spring. On the stages page, a card waits, then slides out and back twice, and the label names each callback: Forward, Reversing, Repeat, and Reverse completed. A second card fades twice and the label reads Forward, Repeat, and Completed. Pressing a third card says Forward, then Reversing, then Reverse completed. Path plays a cubic Bézier, a tangent-following arc, a quadratic hop, a cornered polyline, a slice of the cubic, and the arc walked backward. Matrix plays a turn, a tilt, and a flip. Enter / exit shows a slide and a scale. In view fades and slides two cards in after they scroll halfway onto the page. Scroll marks fill the space above each card. The green card plays once. The coral card plays again each time it scrolls back in. On the poses page, Play springs two cards toward an outline. Halfway, Pose comes back from the live position and keeps the spring speed. Snap jumps onto the outline, then comes back. On the press page, one card springs smaller while the pointer is down. Another grows under a mouse or trackpad. A finger on a phone only presses that card. On the drag page, a card snaps into the nearer of two pockets. Another stays left of a bar: a flick reaches the far pocket, and a slow release springs back. A third has three pockets: a flick from the left reaches the middle, and a slow release takes the nearest. A fourth glides to a stop inside an open field. A fifth snaps to a corner of a board. A sixth stays in place and grows, then settles small or large. Each one keeps the speed of the release. On the pinch page, two fingers grow a card and turn it, and letting go leaves that pose. On the layout page, opening a session reveals the new height from the old one, and everything under those notes springs from where it was. Closing plays a height exit on the notes, so the session shrinks closed. On the collection page, adding, removing, or moving an item plays the move on the items that stay. A removed item fades where it left. The items sit in a vertical stack.
 
 ## Building
 
